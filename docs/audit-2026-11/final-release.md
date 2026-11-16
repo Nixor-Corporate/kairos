@@ -2,12 +2,14 @@
 
 **Code complete. Release blocked.** Manual gates apply to the release commit and its built artifacts. The branch is local and Actions remains disabled.
 
+The [live gate evidence](release-gates.md) records the repository and Cloudflare changes and supersedes the earlier public observations below. Stage the separate realtime security change with the `0500` migration before release.
+
 | ID | Issue | Severity | Code complete? | External action needed? | Owner | Evidence required | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | SEC-01 | Credential incident containment, rotation and deployed asset provenance | Critical | Yes | Yes | Incident lead, identity, repository and hosting owners | Restricted rotation and revocation records, hosts and historical runs reviewed, clean build and deployed manifests compared | Open |
-| SEC-04 | Default-branch protection and trusted checks | High | Yes | Yes | GitHub repository and organization owners | Effective `main` rules, bypass and workflow permissions, independent check evidence for reviewed SHA | Open |
-| SEC-05 | Production canonical HTTPS redirect, cookies and OAuth | High | App path reviewed | Yes | cPanel, Cloudflare and Google OAuth owners | Direct origin and edge traces, secure session and OAuth browser smoke | Open |
-| SEC-06 / SEC-07 | WSS membership revocation and relay process isolation | High | SEC-07 argument fix complete | Yes | Engineering and hosting owners | Scoped subscription exercise after enrollment removal, account disable and session expiry. Verify process isolation and record any residual access window and its approved disposition | Open |
+| SEC-04 | Default-branch protection and trusted checks | High | Yes | Review release PR offline | GitHub repository and organization owners | Active `main` ruleset and effective check, no bypass and Actions disabled | Protection closed |
+| SEC-05 | Production canonical HTTPS redirect, cookies and OAuth | High | Public downgrade remediated | Yes | cPanel, Cloudflare and Google OAuth owners | Direct origin correction and logged-in OAuth and WSS browser smoke | Open |
+| SEC-06 / SEC-07 | WSS membership revocation and relay process isolation | High | Local code and regression complete | Yes | Engineering and hosting owners | Staged subscription exercise after revocation, host broker access, least-privilege service identity | Open |
 | STAGE-01 | Representative cPanel runtime, Drive and XLSX capacity | High | Yes | Yes | Hosting, QA and Drive owners | Migration and app smoke, Drive permissions, complete XLSX downloads at peak load, measured limits and cleanup | Blocked on staging |
 
 See the [security release gates](release-gates.md) for verified evidence, exact owner steps and closure criteria.
