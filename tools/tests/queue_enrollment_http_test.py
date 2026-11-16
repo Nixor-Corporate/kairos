@@ -52,7 +52,7 @@ req(student,'queues.php',409,{'queue_id':151,'action':'join'})
 req(ta,'ta/stop.php',body={'queue_id':151,'assignment_id':a})
 req(student,'queues.php',body={'queue_id':151,'action':'join'})
 b = req(ta,'ta/accept.php',body={'queue_id':151,'user_id':101})['assignment_id']
-assert b != a
+assert b != a and b == ta_state()['serving']['ta_assignment_id'], 'rapid reaccept must return the new active assignment ID'
 assert req(ta,'ta/stop.php',409,{'queue_id':151,'assignment_id':a})['error'] == 'serving_changed'
 assert ta_state()['serving']['ta_assignment_id'] == b
 req(ta,'ta/stop.php',body={'queue_id':151,'assignment_id':b})

@@ -65,6 +65,7 @@ try {
         json_out(['error' => 'student not waiting in queue'], 409);
     }
 
+    $pk = ta_assignment_primary_key($pdo);
     $ins = $pdo->prepare(
         'INSERT INTO ta_assignments (ta_user_id, student_user_id, queue_id, started_at)
          VALUES (:ta, :stu, :qid, NOW())'
@@ -76,14 +77,14 @@ try {
     ]);
 
     $assignmentId = null;
-    $pk = ta_assignment_primary_key($pdo);
     if ($pk) {
+        // Read the ID before schema lookups or other statements clear it on this connection.
         $assignmentId = $pdo->lastInsertId();
         if (!$assignmentId) {
             $idStmt = $pdo->prepare(
                 'SELECT ' . $pk . ' FROM ta_assignments
                  WHERE ta_user_id = :ta AND student_user_id = :stu AND queue_id = :qid
-                 ORDER BY started_at DESC LIMIT 1'
+                 ORDER BY started_at DESC, ' . $pk . ' DESC LIMIT 1'
             );
             $idStmt->execute([
                 ':ta'  => $ta['user_id'],
