@@ -1,0 +1,31 @@
+# Architecture, functionality and maintainability
+
+## Current implementation
+
+The public PHP API mixes legacy flat endpoints, role-specific endpoints, and nested LMS endpoints. `src/rbac.php` centralizes most course capability decisions, but legacy room, queue, enrollment and manager helpers keep some independent mappings. MariaDB stores queue entries, serving assignments, task progress, LMS records, and audit history. The Python relay also reads MariaDB to authorize course subscriptions and drain LMS outbox events. The frontend combines the shared identity and course shell with a legacy student dashboard and independent manager, TA and projector controllers.
+
+| Workflow | Source traced | Verification and remaining work |
+| --- | --- | --- |
+| Google, invited local accounts, logout | `public/api/auth.php`, `public/api/auth/`, `src/auth/`, `public/api/bootstrap.php` | Existing auth tests and synthetic password sign-in. Google login, deployment cookies and device persistence need live-like staging. |
+| Enrollment and course access | `public/api/courses.php`, `public/api/lms/_enrollment.php`, `public/api/lms/courses/preenroll.php`, `src/rbac.php` | Existing join/pre-enrollment tests. The manager Progress API and workbook now read the same enrollment mapping family as RBAC. The separate legacy roster management endpoints still select one mapping and need a write/removal policy review. |
+| Queue join, leave and room management | `public/api/queues.php`, `public/api/manager/rooms.php`, `public/api/manager/queues.php`, `public/api/queue_helpers.php` | Per-queue composite uniqueness and waiting-entry deletion. Confirm policy for multi-queue entry and serving-state cancellation before altering those semantics. Queue deletion cascades to serving assignments under the baseline schema. |
+| Accept, serve and stop | `public/api/ta/accept.php`, `stop.php`, `call_again.php` | Accept now serializes on queue row and consumes a waiting entry before insertion. Verify historical duplicate assignments, stale reload, interruption, and manager recovery from staging snapshots. |
+| Task sign-off and manager reporting | `public/api/ta/update_progress.php`, `src/signoff.php`, `public/api/manager/progress.php`, `src/progress_export.php` | Synthetic MariaDB policy and sign-off changes, rollback, role checks, historical preservation, HTTP workbook and parser. See [verification](verification.md). |
+| Projector and course navigation | `templates/pages/projector.html`, `public/js/projector.js`, `public/js/ws.js`, `public/js/theme.js`, `public/js/navigation.js` | Source and existing static/runtime contracts. Real projected brightness and client device checks pending. |
+| Modules, lessons and embeds | `public/api/lms/sections/`, `lessons/`, `module_items/`, `resources/` | Existing update/reorder, upload, deletion and embed tests. Preserve managed Drive proxy and provider preview policy. Recheck actual Google Drive preview, YouTube embed conversion and Office fallback on authorized staging content. |
+| Quiz, submission and grade flows | `public/api/lms/quiz/`, `assignments/`, `grading/` | Existing test harnesses cover attempts, required response handling, review, access, submission and soft deletion. Verify realistic grading, release, late work and private feedback workflows with staff. |
+| Notifications and analytics | `public/api/lms/notifications_seen.php`, `notifications_seen_list.php`, `analytics/`, `analytics_*.php` | Sources and contract coverage. Confirm mark-seen persistence across tabs and analytics freshness with staging data. |
+| Admin and Drive operations | `public/api/admin/`, `public/api/lms/integrations/drive/`, `src/auth/` | Authorization and Drive unit tests where possible. Restricted Drive integration and production administration require dedicated accounts and fixtures. |
+
+## Technical debt and performance
+
+- `public/api/manager/_helpers.php`, `public/api/ta/common.php`, and `src/rbac.php` duplicate compatibility logic and expose differently scoped interpretations of course membership. Consolidate reads with fixtures before migrating writes. Some legacy helper names collide in one PHP request, so the updated progress handlers load the central RBAC path directly.
+- `public/api/ta/queues.php` aggregates waiters and then loads each queue snapshot. `public/script.js` additionally fetches queue metadata per queue. Measure SQL count, response bytes and browser waterfalls before changing payloads or polling frequency.
+- `public/js/ta.js` can apply queue snapshot payloads to visible state. `ws_server.py` emits both legacy channel events and LMS outbox events. Use committed REST data to recover from reconnects and stale delivery. Track an explicit version where optimistic rendering depends on order. Build tests for loss, duplication and out-of-order events before replacing the existing transport.
+- There is no single schema entry point for all current installation paths. Base and earlier LMS migrations live in `sql/`, and current changes live in `db/migrations/`. The isolated bootstrap demonstrated that the pre-enroll tracking migration depends on the preceding discovery migration. Record application and schema baselines with each release. Confirm actual cPanel schema using metadata and a reviewed inventory.
+- `composer.lock` controls PHP packages, including the private Google integration. Python top-level packages are pinned with transitives resolved at install time. Create a reproducible platform-specific relay build when CI trust is restored. Preserve the existing cPanel topology and size limits.
+- The XLSX writer uses one unbuffered prepared query per data worksheet and disk-backed XML. It can split a worksheet across the Excel row limit. The local test measured course download and parse latency for tiny synthetic data. See [verification](verification.md) for scale results and the production timeout gap.
+
+## Manual coverage still needed
+
+Run scripted journeys in a clean staging cPanel replica for student, TA, manager and admin with two accessible courses and one forbidden course. Record browser, live relay backend, schema revision, anonymized timings and observed status. Include storage quota, restricted resource access, relay disconnect/reconnect, analytics cache freshness and enrollment removal.

@@ -118,6 +118,9 @@ historical submissions/attempts/grades. Active child/grading endpoints first req
 | `lms/announcements/{create,update,delete}.php` | POST | `manage_course_announcements` | stored announcement course; soft delete and audit | 403/404/422 |
 | `lms/announcements_read.php`, `notifications_seen*.php` | GET/POST | `view_course` | visible event/announcement belongs to course and current user | 403/422 |
 | `ta/student_progress.php`, `ta/comment.php`, `ta/update_progress.php` | GET/POST | `update_student_progress` | TA course assignment plus target student enrollment | 403/404 |
+| `progress.php` | GET | `view_course` | Course required, own progress statuses | 403 |
+| `manager/progress.php`, `manager/progress_export.php` | GET | `manage_course` | One managed course and its current student enrollment | 403/404 |
+| `manager/signoff_policy.php` | GET/POST | `manage_course` | One managed course | 403 |
 | `ta/courses.php`, `ta/rooms.php`, `ta/queues.php`, `ta/current.php`, `ta/{accept,call_again,stop}.php` | GET/POST | TA operational access | assigned course; queue -> room -> course | 403/404 |
 | `manager/courses.php`, `manager/course_access.php`, `manager/{rooms,queues,progress,users_search,enroll,unenroll}.php` | GET/POST | manager or admin | manager assigned course; admins all courses | 403/404 |
 | `admin/courses.php`, `admin/assign.php`, `admin/users_search.php`, diagnostics | GET/POST | admin | global; staff assignment remains admin-only | 403/404 |

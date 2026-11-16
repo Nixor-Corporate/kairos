@@ -362,6 +362,22 @@
             <div class="fixture-row"><div><strong>Student Two</strong><p class="muted small">Waiting 2 minutes</p></div><button class="btn btn-ghost btn-sm">Select</button></div>
           </div></div><div class="k-card"><div class="k-card__header"><h3 class="k-card__title">Student One</h3><span class="fixture-badge">CS 101</span></div><div class="k-card__body"><h4>Progress</h4><div class="fixture-bar"><span style="width:62%"></span></div><h4 style="margin-top:24px">Comments</h4><textarea class="k-textarea" rows="4" placeholder="Add a note for other TAs..."></textarea><button class="btn btn-primary" style="margin-top:10px">Add comment</button></div></div></div>` });
       },
+      'ta-signoff'() {
+        views['ta-dashboard']();
+        document.body.insertAdjacentHTML('beforeend', `
+          <dialog class="k-modal" aria-labelledby="fixtureSignoffTitle">
+            <form class="k-modal__panel k-modal__content--sm">
+              <div class="k-modal__header"><h2 class="k-modal__title" id="fixtureSignoffTitle">Complete task</h2></div>
+              <div class="k-modal__body">
+                <p>Lab 2 · Debugging exercise</p>
+                <div class="field"><label for="fixtureRating">Rating (required)</label><select id="fixtureRating" class="input"><option>Developing</option><option selected>Satisfactory</option><option>Excellent</option></select></div>
+                <div class="field"><label for="fixtureSignoffComment">Comment (required)</label><textarea class="input" id="fixtureSignoffComment" rows="3">Explained how to isolate the failing condition.</textarea></div>
+              </div>
+              <div class="k-modal__footer"><button type="button" class="btn btn-ghost">Cancel</button><button class="btn btn-primary">Complete task</button></div>
+            </form>
+          </dialog>`);
+        document.querySelector('dialog').showModal();
+      },
       'grading-workspace'() {
         shell({ role: 'TA', active: 'Grading', title: 'Grading', courseNav: true, content: `
           <div class="k-page-header"><div><h1 class="k-page-header__title">Grading</h1><p class="k-page-header__subtitle">Problem Set 1</p></div><select class="k-select"><option>Problem Set 1</option></select></div>
@@ -381,6 +397,31 @@
           <div class="fixture-grid">
             ${['Computer Science 101', 'Programming Lab', 'Capstone Project'].map((name, i) => `<article class="k-card fixture-course"><div><span class="fixture-badge">${['CS 101','CS LAB','CAPSTONE'][i]}</span><h3 style="margin-top:16px">${name}</h3><p class="muted">Manage course settings, rooms, enrollment, learning content, grading, and analytics.</p></div><button class="btn btn-primary">Manage course</button></article>`).join('')}
           </div>` });
+      },
+      'manager-progress'() {
+        shell({ role: 'Manager', active: 'Manager', title: 'Student progress', content: `
+          <div class="k-page-header"><h1 class="k-page-header__title">Computer Science 101 progress</h1><button class="btn btn-ghost">← Back</button></div>
+          <section class="k-card"><div class="k-card__body">
+            <details open class="signoff-settings"><summary>Sign-off requirements</summary>
+              <form class="k-panel-gap">
+                <p>Set the requirements for marking any progress task complete in this course.</p>
+                <div class="k-toolbar">
+                  <label><input type="checkbox" role="switch" checked> Require a rating</label>
+                  <label><input type="checkbox" role="switch" checked> Require a comment</label>
+                </div>
+                <ol class="signoff-choices k-panel-gap">${['Developing', 'Satisfactory', 'Excellent'].map(label => `
+                  <li class="k-toolbar"><input class="input" value="${label}" aria-label="Rating label"><label><input type="checkbox" checked> Active</label>
+                    <button type="button" class="btn btn-secondary btn-sm">Move up</button><button type="button" class="btn btn-secondary btn-sm">Move down</button></li>`).join('')}</ol>
+                <div class="k-toolbar"><button type="button" class="btn btn-secondary">Add rating choice</button><button class="btn btn-primary">Save requirements</button></div>
+              </form>
+            </details>
+          </div></section>
+          <section class="k-card k-panel-gap"><div class="k-card__header">
+            <h2 class="k-card__title">Roster progress</h2>
+          </div><div class="k-card__body">
+            <p class="muted small">Download progress for all students currently enrolled in this course.</p>
+            <button class="btn btn-secondary">Download Excel workbook</button>
+          </div></section>` });
       },
       'manager-course-settings'() {
         shell({ role: 'Manager', active: 'Manager', title: 'Course Settings', content: `
