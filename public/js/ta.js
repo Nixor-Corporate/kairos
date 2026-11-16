@@ -908,7 +908,7 @@ function renderStudentPanel(data, userId) {
   const student = findStudentInQueues(userId);
   const nameEl = document.getElementById('taStudentName');
   const fallbackName = taState.studentDirectory?.[userId] || `Student #${userId}`;
-  if (nameEl) nameEl.textContent = student?.name || fallbackName;
+  if (nameEl) nameEl.textContent = data?.studentName || student?.name || fallbackName;
   const courseLabel = document.getElementById('taStudentCourse');
   if (courseLabel) courseLabel.textContent = taState.selectedCourse ? `Course #${taState.selectedCourse}` : '';
 
@@ -954,6 +954,7 @@ function renderProgressList(data) {
       name.textContent = detail.name;
       const select = document.createElement('select');
       select.dataset.detail = detail.detail_id;
+      select.dataset.categoryName = cat.name;
       select.setAttribute('aria-label', `Progress for ${detail.name}`);
       options.forEach((optName) => {
         const opt = document.createElement('option');
@@ -1053,11 +1054,16 @@ function confirmSignoff(select, detailId, studentId, status, previous, policy) {
   const courseId = taState.selectedCourse;
   form.reset();
   error.textContent = '';
-  document.getElementById('taSignoffTask').textContent = select.closest('.ta-progress-item').querySelector('.detail-name').textContent;
+  document.getElementById('taSignoffStudent').textContent =
+    document.getElementById('taStudentName')?.textContent || `Student #${studentId}`;
+  const taskName = select.closest('.ta-progress-item').querySelector('.detail-name').textContent;
+  document.getElementById('taSignoffTask').textContent =
+    [select.dataset.categoryName, taskName].filter(Boolean).join(' · ');
   document.getElementById('taSignoffRatingField').hidden = !policy.options.length;
   document.getElementById('taSignoffRatingLabel').textContent = policy.rating_required ? 'Rating (required)' : 'Rating (optional)';
   document.getElementById('taSignoffCommentLabel').textContent = policy.comment_required ? 'Comment (required)' : 'Comment (optional)';
   rating.replaceChildren(new Option('Select a rating', ''), ...policy.options.map(option => new Option(option.label, option.id)));
+  rating.selectedIndex = 0;
   rating.required = policy.rating_required;
   comment.required = policy.comment_required;
   cancel.onclick = () => dialog.close();
@@ -1076,6 +1082,11 @@ function confirmSignoff(select, detailId, studentId, status, previous, policy) {
       if (save.disabled) return;
       if (taState.selectedStudent !== studentId || taState.selectedCourse !== courseId) {
         dialog.close();
+        return;
+      }
+      if (policy.rating_required && !rating.value) {
+        error.textContent = 'Select a rating to complete this task.';
+        rating.focus();
         return;
       }
       if (policy.comment_required && !comment.value.trim()) {

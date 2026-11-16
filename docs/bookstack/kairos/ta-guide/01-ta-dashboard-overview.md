@@ -12,7 +12,7 @@ Use the TA Dashboard to select an assigned course and room, view the student que
 4. Review the **Student Queue**.
 5. Select a Student to view progress.
 6. To sign off a task, choose **Completed** next to it.
-7. If the course requires a rating or comment, complete the fields marked **required** and select **Complete task**.
+7. If a sign-off dialog opens, check the student and task. Choose a rating if required, add the required comment, and select **Complete task**.
 8. Use the separate **Comments** area when you want to leave a general note for other TAs.
 
 ## Screenshot

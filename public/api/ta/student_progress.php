@@ -23,6 +23,10 @@ if (!in_array($courseId, rbac_student_course_ids($pdo, $studentId), true)) {
     json_out(['error' => 'student_not_found'], 404);
 }
 
+$studentStmt = $pdo->prepare('SELECT name FROM users WHERE user_id = :uid');
+$studentStmt->execute([':uid' => $studentId]);
+$studentName = $studentStmt->fetchColumn();
+
 // Fetch categories for the course
 $catStmt = $pdo->prepare('SELECT CAST(category_id AS UNSIGNED) AS category_id, name
                            FROM progress_category
@@ -93,6 +97,7 @@ if (table_exists($pdo, 'ta_comments')) {
 $policy = signoff_policy($pdo, $courseId);
 $policy['options'] = array_values(array_filter($policy['options'], static fn(array $option): bool => $option['active']));
 json_out([
+    'studentName'       => $studentName === false ? null : $studentName,
     'signoffPolicy'     => $policy,
     'categories'        => $categories,
     'detailsByCategory' => $detailsByCat,

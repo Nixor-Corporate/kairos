@@ -201,13 +201,16 @@
 
   <div id="taToastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
 
-  <dialog class="k-modal" id="taSignoffDialog" aria-labelledby="taSignoffTitle">
+  <dialog class="k-modal" id="taSignoffDialog" aria-labelledby="taSignoffTitle" aria-describedby="taSignoffContext">
     <form class="k-modal__panel k-modal__content--sm" id="taSignoffForm">
       <div class="k-modal__header">
         <h2 class="k-modal__title" id="taSignoffTitle">Complete task</h2>
       </div>
       <div class="k-modal__body">
-        <p id="taSignoffTask"></p>
+        <div id="taSignoffContext">
+          <p><strong>Student</strong> <span id="taSignoffStudent"></span></p>
+          <p><strong>Task</strong> <span id="taSignoffTask"></span></p>
+        </div>
         <div class="field" id="taSignoffRatingField">
           <label for="taSignoffRating" id="taSignoffRatingLabel">Rating</label>
           <select id="taSignoffRating" class="input"></select>
