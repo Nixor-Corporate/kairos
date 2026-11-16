@@ -20,6 +20,7 @@ require_once $root . '/public/api/lms/_common.php';
 require_once $root . '/public/api/lms/drive_client.php';
 require_once $root . '/public/api/lms/resources/_access.php';
 require_once $root . '/vendor/autoload.php';
+require_once $root . '/public/api/lms/integrations/drive/GoogleDriveStorage.php';
 
 final class FakeDriveStorage implements DriveStorageInterface
 {
@@ -117,17 +118,17 @@ try {
     $assert($e->reason() === 'disabled', 'disabled storage should report the disabled reason');
 }
 
-putenv('GOOGLE_DRIVE_ENABLED=true');
-putenv('GOOGLE_DRIVE_CREDENTIALS_PATH=');
-putenv('GOOGLE_DRIVE_SHARED_DRIVE_ID=');
-putenv('GOOGLE_DRIVE_ROOT_FOLDER_ID=');
+$_ENV['GOOGLE_DRIVE_ENABLED'] = 'true';
+$_ENV['GOOGLE_DRIVE_CREDENTIALS_PATH'] = '';
+$_ENV['GOOGLE_DRIVE_SHARED_DRIVE_ID'] = '';
+$_ENV['GOOGLE_DRIVE_ROOT_FOLDER_ID'] = '';
 try {
     lms_drive_storage();
     $failed[] = 'incomplete Drive configuration should fail closed';
 } catch (DriveStorageException $e) {
     $assert($e->reason() === 'configuration', 'incomplete Drive configuration should report a configuration failure');
 }
-putenv('GOOGLE_DRIVE_ENABLED=false');
+$_ENV['GOOGLE_DRIVE_ENABLED'] = 'false';
 
 $assert(lms_upload_size_allowed(1024, 1024), 'upload size equal to the limit should be accepted');
 $assert(!lms_upload_size_allowed(1025, 1024), 'upload size above the limit should be rejected');
