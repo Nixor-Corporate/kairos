@@ -13,6 +13,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 
 $input = kairos_json_input();
 $queueId = isset($input['queue_id']) ? (int)$input['queue_id'] : 0;
+$assignmentId = isset($input['assignment_id'])
+    ? filter_var($input['assignment_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+    : null;
+if ($assignmentId === false) {
+    json_out(['error' => 'invalid_assignment'], 400);
+}
 
 if ($queueId <= 0) {
     json_out(['error' => 'queue_id required'], 400);
@@ -36,60 +42,71 @@ if (!ta_has_course($pdo, (int)$ta['user_id'], $courseId)) {
     json_out(['error' => 'forbidden', 'message' => 'Course not assigned'], 403);
 }
 
-$assignment = ta_active_assignment($pdo, $queueId);
-if (!$assignment) {
-    json_out(['success' => true, 'already' => true]);
-}
-
-$taRank = ta_user_rank($pdo, (int)$ta['user_id']);
-if (($assignment['ta_user_id'] ?? null) !== (int)$ta['user_id'] && $taRank < role_rank('manager')) {
-    json_out(['error' => 'forbidden', 'message' => 'Only assigned TA or manager can stop serving'], 403);
-}
-
-$columns = ta_assignment_columns($pdo);
-$updates = [];
-if ($columns['ended_at']) {
-    $updates[] = 'ended_at = NOW()';
-}
-if ($columns['completed_at']) {
-    $updates[] = 'completed_at = NOW()';
-}
-if ($columns['finished_at']) {
-    $updates[] = 'finished_at = NOW()';
-}
-if (!$updates) {
-    // fall back to a no-op update so the query executes without altering data
-    $updates[] = 'started_at = started_at';
-}
-
-$conditions = ['queue_id = :qid', 'student_user_id = :sid'];
-$params = [
-    ':qid' => $queueId,
-    ':sid' => $assignment['student_user_id'] ?? null,
-];
-
-if (!empty($assignment['ta_assignment_id']) && $columns['ta_assignment_id']) {
-    $conditions[] = 'ta_assignment_id = :aid';
-    $params[':aid'] = $assignment['ta_assignment_id'];
-} else {
-    if (!empty($assignment['ta_user_id'])) {
-        $conditions[] = 'ta_user_id = :tid';
-        $params[':tid'] = $assignment['ta_user_id'];
-    }
-    if (!empty($assignment['started_at'])) {
-        $conditions[] = 'started_at = :started';
-        $params[':started'] = $assignment['started_at'];
-    }
-}
-
 $pdo->beginTransaction();
-$rowsUpdated = 0;
 try {
+    if (!queue_lock_for_update($pdo, $queueId)) {
+        $pdo->rollBack();
+        json_out(['error' => 'not_found', 'message' => 'Queue not found.'], 404);
+    }
+    $assignment = ta_active_assignment($pdo, $queueId);
+    if (!$assignment) {
+        $pdo->rollBack();
+        json_out(['success' => true, 'already' => true]);
+    }
+
+    if ($assignmentId !== null && $assignmentId !== $assignment['ta_assignment_id']) {
+        $pdo->rollBack();
+        json_out(['error' => 'serving_changed', 'message' => 'The serving session changed. Review the current session and try again.'], 409);
+    }
+
+    $taRank = ta_user_rank($pdo, (int)$ta['user_id']);
+    if (($assignment['ta_user_id'] ?? null) !== (int)$ta['user_id'] && $taRank < role_rank('manager')) {
+        $pdo->rollBack();
+        json_out(['error' => 'forbidden', 'message' => 'Only assigned TA or manager can stop serving'], 403);
+    }
+
+    $columns = ta_assignment_columns($pdo);
+    $updates = [];
+    if ($columns['ended_at']) {
+        $updates[] = 'ended_at = NOW()';
+    }
+    if ($columns['completed_at']) {
+        $updates[] = 'completed_at = NOW()';
+    }
+    if ($columns['finished_at']) {
+        $updates[] = 'finished_at = NOW()';
+    }
+    if (!$updates) {
+        throw new RuntimeException('No serving completion marker is available');
+    }
+
+    $conditions = ['queue_id = :qid', 'student_user_id = :sid'];
+    $params = [
+        ':qid' => $queueId,
+        ':sid' => $assignment['student_user_id'] ?? null,
+    ];
+
+    if (!empty($assignment['ta_assignment_id']) && $columns['ta_assignment_id']) {
+        $conditions[] = 'ta_assignment_id = :aid';
+        $params[':aid'] = $assignment['ta_assignment_id'];
+    } else {
+        if (!empty($assignment['ta_user_id'])) {
+            $conditions[] = 'ta_user_id = :tid';
+            $params[':tid'] = $assignment['ta_user_id'];
+        }
+        if (!empty($assignment['started_at'])) {
+            $conditions[] = 'started_at = :started';
+            $params[':started'] = $assignment['started_at'];
+        }
+    }
+
     $sql = 'UPDATE ta_assignments SET ' . implode(', ', $updates)
          . ' WHERE ' . implode(' AND ', $conditions) . ' LIMIT 1';
     $st = $pdo->prepare($sql);
     $st->execute($params);
-    $rowsUpdated = $st->rowCount();
+    if ($st->rowCount() !== 1) {
+        throw new RuntimeException('Serving assignment did not change');
+    }
     $pdo->commit();
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) {
@@ -136,5 +153,5 @@ queue_ws_notify($pdo, $queueId, 'stop_serve', [
 
 json_out([
     'success' => true,
-    'already' => $rowsUpdated === 0,
+    'already' => false,
 ]);

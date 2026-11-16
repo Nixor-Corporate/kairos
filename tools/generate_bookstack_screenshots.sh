@@ -17,6 +17,7 @@ views=(
   login
   activation
   dashboard
+  room-serving
   settings
   student-modules
   student-assignment

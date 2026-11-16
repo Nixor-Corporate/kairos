@@ -21,3 +21,11 @@ The dashboard is the starting point for your courses, rooms, progress, and role 
 - The menu changes according to your role.
 - A course may be visible as a preview before you are enrolled.
 - On a phone, use the menu button to open the sidebar.
+
+## Room queues
+
+Open a room to join or leave a waiting queue. When a TA starts serving you, the room displays who is serving you. The status refreshes when you return to the page. Sound depends on your browser settings.
+
+After service starts, ask the TA to use **Stop Serving** when you are finished.
+
+![A room queue during an active TA session](../screenshots/room-serving.png)

@@ -40,9 +40,7 @@ if (!ta_has_course($pdo, (int)$ta['user_id'], $courseId)) {
 $pdo->beginTransaction();
 try {
     // All accepts for a queue serialize on its row before inspecting assignments.
-    $lock = $pdo->prepare('SELECT queue_id FROM queues WHERE queue_id = :qid FOR UPDATE');
-    $lock->execute([':qid' => $queueId]);
-    if (!$lock->fetchColumn()) {
+    if (!queue_lock_for_update($pdo, $queueId)) {
         $pdo->rollBack();
         json_out(['error' => 'queue not found'], 404);
     }
@@ -147,7 +145,7 @@ $wsEvent['payload']['ta_name'] = $taName;
 if ($studentName !== '') {
     $wsEvent['payload']['student_name'] = $studentName;
 }
-ws_notify($wsEvent);
+safe_ws_notify($wsEvent, 'serving notification failed');
 
 $projectorPayload = [
     'event'   => 'projector_serve',
@@ -169,7 +167,7 @@ if (!empty($meta['course_id'])) {
 if (!empty($queue['room_id'])) {
     $projectorPayload['room_id'] = (int)$queue['room_id'];
 }
-ws_notify($projectorPayload);
+safe_ws_notify($projectorPayload, 'projector notification failed');
 
 queue_ws_notify($pdo, $queueId, 'serve', [
     'student_id'           => $studentId,

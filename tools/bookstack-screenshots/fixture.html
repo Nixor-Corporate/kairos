@@ -353,12 +353,26 @@
             <div class="k-card"><div class="k-card__header"><h2 class="k-card__title">Rubric Results</h2></div><div class="k-card__body"><table class="fixture-table"><tr><th>Criterion</th><th>Score</th></tr><tr><td>Correctness</td><td>52 / 60</td></tr><tr><td>Method</td><td>25 / 30</td></tr><tr><td>Presentation</td><td>9 / 10</td></tr></table></div></div>
           </div>` });
       },
+      'room-serving'() {
+        shell({ active: 'All Courses', title: 'Room #2', content: `
+          <div class="k-page-header"><h1 class="k-page-header__title">Room #2</h1></div>
+          <section class="k-card"><div class="k-card__body">
+            <h2>Queues</h2>
+            <div class="queue-row">
+              <div class="queue-header">
+                <div><div class="q-name">Lab 2</div><div class="muted small">Estimated wait ~0–5 minutes</div></div>
+                <div class="queue-actions"><button class="btn btn-ghost" disabled>Join</button><button class="btn" disabled>Leave</button></div>
+              </div>
+              <div class="muted small" role="status">Alex Morgan is serving you now. Ask your TA to end the session when you are finished.</div>
+            </div>
+          </div></section>` });
+      },
       'ta-dashboard'() {
         shell({ role: 'TA', active: 'TA Dashboard', content: `
           <div class="k-page-header"><h1 class="k-page-header__title">TA Dashboard</h1></div>
           <div class="k-card k-card__body k-ta-toolbar"><div class="k-form-field"><label>Course</label><select class="k-select"><option>Computer Science 101</option></select></div><div class="k-form-field"><label>Room</label><select class="k-select"><option>Lab 2</option></select></div><button class="btn btn-secondary">Projector View</button><span class="k-status k-status--info">Queue open</span></div>
           <div class="k-ta-layout"><div><h3 class="k-section-heading">Student Queue</h3><div class="k-card"><div class="k-card__body">
-            <div class="fixture-row"><div><strong>Student One</strong><p class="muted small">Waiting 4 minutes</p></div><button class="btn btn-primary btn-sm">Select</button></div>
+            <div class="fixture-row"><div><strong>Student One</strong><p class="muted small">Serving</p></div><button class="btn btn-danger btn-sm">Stop Serving</button></div>
             <div class="fixture-row"><div><strong>Student Two</strong><p class="muted small">Waiting 2 minutes</p></div><button class="btn btn-ghost btn-sm">Select</button></div>
           </div></div><div class="k-card"><div class="k-card__header"><h3 class="k-card__title">Student One</h3><span class="fixture-badge">CS 101</span></div><div class="k-card__body"><h4>Progress</h4><div class="fixture-bar"><span style="width:62%"></span></div><h4 style="margin-top:24px">Comments</h4><textarea class="k-textarea" rows="4" placeholder="Add a note for other TAs..."></textarea><button class="btn btn-primary" style="margin-top:10px">Add comment</button></div></div></div>` });
       },

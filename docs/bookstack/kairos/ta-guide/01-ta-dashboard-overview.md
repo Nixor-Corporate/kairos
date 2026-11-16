@@ -26,3 +26,5 @@ Use the TA Dashboard to select an assigned course and room, view the student que
 - Only TAs, Managers, and Admins can open TA tools.
 - The course and room lists show only available assignments.
 - TA queue comments are for staff coordination.
+- Use **Stop Serving** to finish your current session. If the session changed in another tab, check who is now being served before trying again.
+- If the dashboard reports a temporary loading problem, reload the page and select your course and room again.

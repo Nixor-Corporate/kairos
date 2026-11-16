@@ -268,6 +268,7 @@ function setAppConfig(config) {
 let selectedCourse = null;
 let selectedRoomId = null;
 let selfUserId = null;
+let lastTaAcceptId = null;
 let taAudioCtx = null;
 let currentUserId = null;
 let sessionCapabilities = { is_logged_in: false, roles: { student: false, ta: false, manager: false, admin: false } };
@@ -461,10 +462,12 @@ function handleTaAcceptEvent(message) {
   if (payload.student_user_id == null && payload.user_id != null) {
     payload.student_user_id = payload.user_id;
   }
-  handleTaAcceptPayload(payload);
+  handleTaAcceptPayload(payload, message.ref_id);
 }
 
 function showSignin() {
+  const sessionError = document.getElementById('dashboardSessionError');
+  if (sessionError) sessionError.hidden = true;
   applySessionCapabilities(null);
   const signin = document.getElementById('signin');
   if (signin) signin.classList.remove('hidden');
@@ -595,21 +598,27 @@ function renderGoogleButton() {
 }
 
 async function bootstrap() {
-  showSignin();
   try {
     const r = await fetch('./api/me.php', { credentials: 'same-origin' });
-    if (!r.ok) throw new Error('me.php ' + r.status);
+    if (!r.ok) throw Object.assign(new Error('Unable to check session'), { status: r.status });
     const ctype = r.headers.get('content-type') || '';
     if (!ctype.includes('application/json')) throw new Error('me.php not JSON');
 
     const me = await r.json();
-    if (!me?.email) { selfUserId = null; stopNotifySSE(); showSignin(); return; }
+    if (Array.isArray(me) && me.length === 0) {
+      selfUserId = null;
+      stopNotifySSE();
+      showSignin();
+      return;
+    }
+    if (!me?.email) throw new Error('Invalid session response');
 
     // Fill userbar (old + new selectors) using KairosIdentity if available
     if (window.KairosIdentity) {
       window.KairosIdentity.me = me;
       window.KairosIdentity.caps = window.KairosIdentity.caps || {};
       window.KairosIdentity.loading = false;
+      window.KairosIdentity.error = false;
       window.KairosIdentity.render();
     } else {
       const avatarEl = document.getElementById('avatar') || document.getElementById('kSidebarAvatar');
@@ -660,10 +669,12 @@ async function bootstrap() {
     // startSSE();
     startNotifySSE();
   } catch (e) {
-    console.warn('bootstrap -> logged-out', e);
+    console.warn('Dashboard session check failed', e);
     selfUserId = null;
     stopNotifySSE();
     showSignin();
+    const sessionError = document.getElementById('dashboardSessionError');
+    if (sessionError) sessionError.hidden = e.status === 401;
   }
 }
 
@@ -719,6 +730,7 @@ async function performLogout() {
     stopSSE();
     stopNotifySSE();
     selfUserId = null;
+    lastTaAcceptId = null;
     currentUserId = null;
     selectedCourse = null;
   setRoomsNavState(false);
@@ -1488,10 +1500,12 @@ function stopNotifySSE() {
   window.SignoffWS.updateFilters({ courseId: null, roomId: null });
 }
 
-function handleTaAcceptPayload(payload) {
+function handleTaAcceptPayload(payload, assignmentId) {
   if (!payload) return;
   const studentId = payload.student_user_id ?? payload.user_id;
   if (!selfUserId || studentId == null || Number(studentId) !== Number(selfUserId)) return;
+  if (assignmentId != null && lastTaAcceptId === String(assignmentId)) return;
+  lastTaAcceptId = assignmentId == null ? null : String(assignmentId);
 
   const taName = payload.ta_name && String(payload.ta_name).trim() ? String(payload.ta_name).trim() : 'A TA';
   const queueSource = payload.queue_id ?? payload.ref_id ?? null;
@@ -1503,14 +1517,6 @@ function handleTaAcceptPayload(payload) {
     const notifyBody = `${taName} is ready for queue ${queueLabel}.`;
     if (Notification.permission === 'granted') {
       try { new Notification('You have been accepted', { body: notifyBody }); } catch (_) { }
-    } else if (Notification.permission === 'default') {
-      try {
-        Notification.requestPermission().then((perm) => {
-          if (perm === 'granted') {
-            try { new Notification('You have been accepted', { body: notifyBody }); } catch (_) { }
-          }
-        }).catch(() => { });
-      } catch (_) { }
     }
   }
 }

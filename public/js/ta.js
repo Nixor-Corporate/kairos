@@ -33,12 +33,21 @@ function reloadProgress() {
 
 const TA_SECTIONS = {
   auth: 'taAuthRequired',
+  unavailable: 'taUnavailable',
   forbidden: 'taForbidden',
   dashboard: 'taDashboard',
 };
 
 document.addEventListener('DOMContentLoaded', () => {
   bootstrapTA();
+  window.addEventListener('kairos:realtime-status', event => {
+    if (event.detail?.status === 'connected') reloadQueues();
+  });
+  window.addEventListener('focus', reloadQueues);
+  window.addEventListener('online', reloadQueues);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) reloadQueues();
+  });
   const logout = document.getElementById('kLogoutBtn') || document.getElementById('taLogoutBtn');
   if (logout) {
     logout.addEventListener('click', async () => {
@@ -52,6 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const val = e.target.value;
       taState.selectedCourse = val || '';
       taState.selectedRoom = '';
+      taState.queueRefresh = null;
       taState.queues = [];
       taState.selectedStudent = null;
       renderRooms([]);
@@ -77,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
     roomSelect.addEventListener('change', (e) => {
       const val = e.target.value;
       taState.selectedRoom = val || '';
+      taState.queueRefresh = null;
       taState.queues = [];
       taState.selectedStudent = null;
       renderQueues();
@@ -197,7 +208,7 @@ async function bootstrapTA() {
       me = await apiGet('./api/me.php');
     }
     if (!me?.email) {
-      setTaView('auth');
+      setTaView(Array.isArray(me) && me.length === 0 ? 'auth' : 'unavailable');
       return;
     }
     taState.me = me;
@@ -219,6 +230,7 @@ async function bootstrapTA() {
       window.KairosIdentity.me = me;
       window.KairosIdentity.caps = caps;
       window.KairosIdentity.loading = false;
+      window.KairosIdentity.error = false;
       window.KairosIdentity.render();
     }
 
@@ -238,7 +250,7 @@ async function bootstrapTA() {
     }
   } catch (err) {
     console.error('me.php failed', err);
-    setTaView('auth');
+    setTaView(err.status === 401 ? 'auth' : 'unavailable');
     return;
   }
 
@@ -255,6 +267,8 @@ async function bootstrapTA() {
       return;
     }
     console.error('courses failed', err);
+    setTaView('unavailable');
+    return;
   }
   if (!Array.isArray(courses)) courses = [];
   taState.courses = courses;
@@ -328,14 +342,16 @@ function renderCourses(courses) {
 }
 
 async function loadRooms(courseId) {
+  const request = Symbol();
+  taState.roomsRequest = request;
   try {
     const rooms = await apiGet(`./api/ta/rooms.php?course_id=${encodeURIComponent(courseId)}`);
+    if (taState.selectedCourse !== courseId || taState.roomsRequest !== request) return;
     taState.rooms = Array.isArray(rooms) ? rooms : [];
     renderRooms(taState.rooms);
   } catch (err) {
-    console.error('rooms failed', err);
-    renderRooms([]);
-    alert('Failed to load rooms for this course.');
+    if (taState.selectedCourse !== courseId || taState.roomsRequest !== request) return;
+    showToast('Could not refresh rooms for this course. Try selecting the course again.', { tone: 'error' });
   }
 }
 
@@ -363,8 +379,9 @@ function renderRooms(rooms) {
     select.value = onlyRoomId;
     select.dispatchEvent(new Event('change'));
     return;
-  } else {
-    taState.selectedRoom = '';
+  } else if (previousRoom) {
+    select.dispatchEvent(new Event('change'));
+    return;
   }
 
   updateProjectorButton();
@@ -388,17 +405,42 @@ function openProjectorView() {
   window.open(url.toString(), '_blank', 'noopener');
 }
 
-async function loadQueues(roomId) {
-  try {
-    const data = await apiGet(`./api/ta/queues.php?room_id=${encodeURIComponent(roomId)}`);
-    taState.queues = Array.isArray(data?.queues) ? data.queues.map(normalizeTaQueue) : [];
-    renderQueues();
-  } catch (err) {
-    console.error('queues failed', err);
-    taState.queues = [];
-    renderQueues();
-    alert('Failed to load queues for this room.');
+function loadQueues(roomId) {
+  const courseId = taState.selectedCourse;
+  const isCurrent = () => taState.selectedRoom === roomId && taState.selectedCourse === courseId;
+  if (!isCurrent()) return Promise.resolve();
+  const current = taState.queueRefresh;
+  if (current?.courseId === courseId && current.roomId === roomId) {
+    current.pending = true;
+    return current.promise;
   }
+
+  const request = { courseId, roomId, pending: true };
+  taState.queueRefresh = request;
+  request.promise = (async () => {
+    while (request.pending && isCurrent() && taState.queueRefresh === request) {
+      request.pending = false;
+      try {
+        const data = await apiGet(`./api/ta/queues.php?room_id=${encodeURIComponent(roomId)}`);
+        if (!isCurrent() || taState.queueRefresh !== request) return;
+        taState.queues = Array.isArray(data?.queues) ? data.queues.map(normalizeTaQueue) : [];
+        renderQueues();
+      } catch (err) {
+        if (!isCurrent() || taState.queueRefresh !== request) return;
+        if (err.status === 401 && window.KairosIdentity) {
+          window.KairosIdentity.handleSessionExpired();
+        } else if (err.status === 403 || err.status === 404) {
+          taState.queues = [];
+          clearStudentPanel();
+          renderQueues();
+        }
+        showToast('Could not refresh queues for this room.', { tone: 'error' });
+      }
+    }
+  })().finally(() => {
+    if (taState.queueRefresh === request) taState.queueRefresh = null;
+  });
+  return request.promise;
 }
 
 function renderQueues() {
@@ -465,6 +507,7 @@ function normalizeTaQueue(raw) {
     const studentId = servingRaw.student_user_id != null ? Number(servingRaw.student_user_id) : null;
     if (taId || studentId) {
       serving = {
+        ta_assignment_id: servingRaw.ta_assignment_id ?? null,
         ta_user_id: taId,
         ta_name: servingRaw.ta_name || '',
         student_user_id: studentId,
@@ -718,7 +761,7 @@ function updateTaServingStatus(queue) {
 
   if (stopSlot) {
     stopSlot.innerHTML = '';
-    if (queue.serving && queue.serving.ta_user_id && taState.me && queue.serving.ta_user_id === taState.me.user_id) {
+    if (queue.serving && queue.serving.ta_user_id && taState.me && queue.serving.ta_user_id === Number(taState.me.user_id)) {
       const actions = document.createElement('div');
       actions.className = 'ta-serving-actions';
       const callBtn = document.createElement('button');
@@ -762,154 +805,50 @@ function updateServingNotice() {
 }
 
 function handleQueueBroadcast(message) {
-  const payload = message?.payload !== undefined ? message.payload : message;
-  if (!payload || payload.queueId == null) {
-    return;
-  }
-  const queueId = Number(payload.queueId);
-  if (!Number.isFinite(queueId) || queueId <= 0) {
-    return;
-  }
-  if (taState.selectedRoom) {
-    const roomId = payload.roomId != null ? Number(payload.roomId) : null;
-    if (roomId && Number(taState.selectedRoom) !== roomId) {
-      return;
-    }
-  }
-
-  const queue = taState.queues.find((q) => q.queue_id === queueId);
-  if (!queue) {
-    if (payload.change === 'bulk_refresh' && taState.selectedRoom) {
-      loadQueues(taState.selectedRoom);
-    }
-    return;
-  }
-
-  if (payload.change === 'bulk_refresh') {
-    if (taState.selectedRoom) {
-      loadQueues(taState.selectedRoom);
-    }
-    return;
-  }
-
-  if (payload.snapshot && Array.isArray(payload.snapshot.students)) {
-    queue.students = payload.snapshot.students.map(normalizeQueueStudentEntry);
-  }
-
-  if (payload.waitingCount != null) {
-    queue.occupant_count = Number(payload.waitingCount);
-  } else {
-    queue.occupant_count = queue.students.filter((student) => student.status === 'waiting').length;
-  }
-
-  queue.occupants = queue.students
-    .filter((student) => student.status === 'waiting')
-    .map((student) => ({
-      user_id: student.id,
-      name: student.name,
-      joined_at: student.joinedAt || null,
-    }));
-
-  const hasServingInfo = Object.prototype.hasOwnProperty.call(payload, 'servingTaId')
-    || Object.prototype.hasOwnProperty.call(payload, 'servingStudentId')
-    || Object.prototype.hasOwnProperty.call(payload, 'servingTaName')
-    || Object.prototype.hasOwnProperty.call(payload, 'servingStudentName');
-
-  if (hasServingInfo) {
-    const taId = payload.servingTaId != null ? Number(payload.servingTaId) : null;
-    const studentId = payload.servingStudentId != null ? Number(payload.servingStudentId) : null;
-    const taName = payload.servingTaName != null ? payload.servingTaName : (queue.serving?.ta_name || '');
-    const studentName = payload.servingStudentName != null ? payload.servingStudentName : (queue.serving?.student_name || '');
-
-    if (taId || studentId) {
-      queue.serving = {
-        ta_user_id: taId,
-        ta_name: taName,
-        student_user_id: studentId,
-        student_name: studentName,
-        started_at: queue.serving?.started_at || null,
-      };
-    } else {
-      queue.serving = null;
-    }
-  }
-
-  queue.updated_at = payload.snapshot?.updatedAt != null
-    ? Number(payload.snapshot.updatedAt)
-    : Math.floor(Date.now() / 1000);
-
-  updateTaQueueCard(queue);
+  const payload = message?.payload ?? message;
+  const roomId = Number(payload?.roomId ?? payload?.room_id ?? message?.room_id);
+  if (!roomId || roomId === Number(taState.selectedRoom)) reloadQueues();
 }
 
 async function handleAccept(queueId, userId, button) {
-  if (!taState.selectedCourse) {
-    alert('Select a course before accepting students.');
-    return;
-  }
+  const { selectedCourse: courseId, selectedRoom: roomId } = taState;
+  if (!courseId || !roomId) return;
+  const isCurrent = () => taState.selectedCourse === courseId && taState.selectedRoom === roomId;
   startButtonLoading(button, 'Accepting…');
   try {
-    await apiPost('./api/ta/accept.php', {
-      queue_id: queueId,
-      user_id: userId,
-    });
+    await apiPost('./api/ta/accept.php', { queue_id: queueId, user_id: userId });
+    if (!isCurrent()) return;
+    clearStudentPanel();
     taState.selectedStudent = userId;
-    const queue = taState.queues.find((q) => q.queue_id === queueId);
-    if (queue) {
-      const studentName = taState.studentDirectory?.[userId] || queue.occupants.find((occ) => occ.user_id === userId)?.name || '';
-      queue.occupants = queue.occupants.filter((occ) => occ.user_id !== userId);
-      queue.students = queue.students.filter((student) => !(student.id === userId && student.status === 'waiting'));
-      queue.students.push({
-        id: userId,
-        name: studentName,
-        status: 'serving',
-        joinedAt: null,
-      });
-      queue.occupant_count = queue.occupants.length;
-      queue.serving = {
-        ta_user_id: taState.me?.user_id ?? null,
-        ta_name: taState.me?.name || '',
-        student_user_id: userId,
-        student_name: studentName,
-        started_at: new Date().toISOString(),
-      };
-      stopButtonLoading(button, { keepDisabled: true });
-      updateTaQueueCard(queue);
-    }
-    highlightSelectedStudent();
-    await loadStudentProgress(userId);
+    await loadQueues(roomId);
+    if (isCurrent() && taState.selectedStudent === userId) await loadStudentProgress(userId);
   } catch (err) {
-    console.error('accept failed', err);
-    const body = err?.body;
-    const message = typeof body === 'string' ? body : (body?.message || body?.error);
-    alert(message || 'Failed to accept student.');
+    if (!isCurrent()) return;
+    showToast(err.body?.message || err.body?.error || 'Failed to accept student.', { tone: 'error' });
+    await loadQueues(roomId);
+  } finally {
     stopButtonLoading(button);
   }
 }
 
 async function handleStopServing(queueId, button) {
-  const queue = taState.queues.find((q) => q.queue_id === queueId);
-  if (!queue || !queue.serving) {
-    return;
-  }
+  const queue = taState.queues.find(q => q.queue_id === queueId);
+  if (!queue?.serving) return;
+  const { selectedRoom: roomId, selectedCourse: courseId } = taState;
+  const isCurrent = () => taState.selectedRoom === roomId && taState.selectedCourse === courseId;
   startButtonLoading(button, 'Stopping…');
   try {
-    const res = await apiPost('./api/ta/stop.php', { queue_id: queueId });
-    if (res?.success) {
-      queue.serving = null;
-      queue.students = queue.students.filter((student) => student.status !== 'serving');
-      queue.occupant_count = queue.students.filter((student) => student.status === 'waiting').length;
-      stopButtonLoading(button, { keepDisabled: true });
-      updateTaQueueCard(queue);
-      showToast('Serving session ended.');
-    } else {
-      const message = res?.message || res?.error;
-      throw new Error(message || 'Failed to stop serving.');
-    }
+    const response = await apiPost('./api/ta/stop.php', {
+      queue_id: queueId,
+      assignment_id: queue.serving.ta_assignment_id ?? undefined,
+    });
+    if (!response?.success) throw new Error('Failed to stop serving.');
+    if (isCurrent()) showToast('Serving session ended.');
   } catch (err) {
-    console.error('stop serving failed', err);
+    if (isCurrent()) showToast(err.body?.message || 'Failed to stop serving.', { tone: 'error' });
+  } finally {
+    if (isCurrent()) await loadQueues(roomId);
     stopButtonLoading(button);
-    const message = err?.message || 'Failed to stop serving.';
-    showToast(message, { tone: 'error' });
   }
 }
 

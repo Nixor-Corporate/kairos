@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/queue_helpers.php';
+
 /**
  * Fetch queue snapshot information for the provided queue id.
  *
@@ -8,7 +10,9 @@ declare(strict_types=1);
  */
 function get_queue_snapshot(PDO $pdo, int $queueId, ?int $currentUserId = null): array
 {
-    $queueStmt = $pdo->prepare('SELECT queue_id, avg_handle_minutes FROM queues_info WHERE queue_id = :qid');
+    $hasConfiguredAverage = ta_table_has_columns($pdo, 'queues_info', ['avg_handle_minutes']);
+    $averageColumn = $hasConfiguredAverage ? ', avg_handle_minutes' : '';
+    $queueStmt = $pdo->prepare('SELECT queue_id' . $averageColumn . ' FROM queues_info WHERE queue_id = :qid');
     $queueStmt->execute([':qid' => $queueId]);
     $queueRow = $queueStmt->fetch(PDO::FETCH_ASSOC);
     if (!$queueRow) {
@@ -43,7 +47,7 @@ function get_queue_snapshot(PDO $pdo, int $queueId, ?int $currentUserId = null):
 
     $count = count($participants);
 
-    $rawAvg = isset($queueRow['avg_handle_minutes']) ? (float)$queueRow['avg_handle_minutes'] : 0.0;
+    $rawAvg = (float)($queueRow['avg_handle_minutes'] ?? queue_avg_handle_minutes($pdo, $queueId));
     if (!is_finite($rawAvg) || $rawAvg <= 0) {
         $rawAvg = 0.0;
     }

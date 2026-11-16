@@ -298,6 +298,7 @@ try {
             $already = false;
             $pdo->beginTransaction();
             try {
+                queue_require_waiting_transition($pdo, $queue_id, (int)$user['user_id']);
                 $ins = $pdo->prepare(
                     'INSERT IGNORE INTO queue_entries (`queue_id`, `user_id`, `timestamp`)
                      VALUES (:qid, :uid, NOW())'
@@ -343,6 +344,7 @@ try {
             $already = false;
             $pdo->beginTransaction();
             try {
+                queue_require_waiting_transition($pdo, $queue_id, (int)$user['user_id']);
                 $del = $pdo->prepare(
                     'DELETE FROM queue_entries
                      WHERE `queue_id` = :qid AND `user_id` = :uid'
