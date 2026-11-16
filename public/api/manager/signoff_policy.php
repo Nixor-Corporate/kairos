@@ -22,11 +22,30 @@ if (!rbac_can($pdo, $user, 'manage_course', $courseId)) {
     json_out(['error' => 'forbidden'], 403);
 }
 
+$detailId = null;
+if (array_key_exists('detail_id', $input)) {
+    $detailId = filter_var($input['detail_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if (!$detailId) {
+        json_out(['error' => 'invalid_task'], 400);
+    }
+}
+
 try {
-    $policy = $method === 'POST'
-        ? signoff_save_policy($pdo, $courseId, (int)$user['user_id'], $input)
-        : signoff_policy($pdo, $courseId);
+    if ($detailId !== null) {
+        $policy = $method === 'POST'
+            ? signoff_save_task_settings($pdo, $courseId, $detailId, (int)$user['user_id'], $input)
+            : signoff_task_settings($pdo, $courseId, $detailId);
+    } else {
+        $policy = $method === 'POST'
+            ? signoff_save_policy($pdo, $courseId, (int)$user['user_id'], $input)
+            : signoff_policy($pdo, $courseId);
+        if ($method === 'GET' && ($input['include_tasks'] ?? '') === '1') {
+            $policy['tasks'] = signoff_task_catalog($pdo, $courseId);
+        }
+    }
     json_out($policy);
+} catch (SignoffTaskNotFound $e) {
+    json_out(['error' => 'task_not_found', 'message' => $e->getMessage()], 404);
 } catch (SignoffConflict $e) {
     json_out(['error' => 'policy_conflict', 'message' => $e->getMessage()], 409);
 } catch (InvalidArgumentException $e) {

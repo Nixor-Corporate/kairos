@@ -47,3 +47,21 @@ rejects_signoff(fn() => signoff_validate_completion(['rating_option_id' => '22']
 rejects_signoff(fn() => signoff_validate_completion(['rating_option_id' => '22', 'policy_revision' => 6], $policy), SignoffConflict::class);
 rejects_signoff(fn() => signoff_validate_policy(array_replace($ratingOnly, ['options' => []])), InvalidArgumentException::class);
 echo "Sign-off validation tests passed\n";
+
+$defaults = ['revision' => 4, 'rating_required' => true, 'comment_required' => true,
+    'options' => [['id' => '12', 'label' => 'Pass', 'active' => true]]];
+$task = ['task_revision' => 3, 'overrides' => signoff_validate_task_overrides([
+    'rating_required' => false, 'options' => ['Revisit', 'Pass'],
+])];
+$effective = signoff_effective_policy($defaults, $task);
+assert_signoff(!$effective['rating_required'] && $effective['comment_required'], 'Overrides must apply independently.');
+assert_signoff(array_column($effective['options'], 'label') === ['Revisit', 'Pass'], 'Task choices must preserve order.');
+assert_signoff(signoff_validate_completion(['task_revision' => 3, 'comment' => 'Reviewed'], $effective)
+    === [null, null, 'Reviewed'], 'Optional rating must allow completion with comment alone.');
+rejects_signoff(
+    fn () => signoff_validate_completion(['task_revision' => 2, 'comment' => 'Reviewed'], $effective),
+    SignoffConflict::class
+);
+$inherited = signoff_effective_policy($defaults, ['task_revision' => 4, 'overrides' => signoff_validate_task_overrides([])]);
+assert_signoff($inherited['options'] === $defaults['options'] && $inherited['rating_required'], 'Reset must inherit.');
+assert_signoff($inherited['task_revision'] === 4, 'Reset must preserve the revision boundary.');

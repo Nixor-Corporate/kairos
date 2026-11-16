@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/task_signoff_policy.php';
+
 final class SignoffConflict extends RuntimeException
 {
 }
@@ -88,6 +90,11 @@ function signoff_save_policy(PDO $pdo, int $courseId, int $actorId, array $input
             $pdo->commit();
             return $current;
         }
+        if (!array_filter($input['options'], static fn (array $option): bool => $option['active'])) {
+            foreach (signoff_task_overrides($pdo, $courseId) as $task) {
+                signoff_require_rating_choices(signoff_effective_policy($input, $task));
+            }
+        }
         $input['revision']++;
         $stmt = $pdo->prepare(
             'INSERT INTO signoff_policies (course_id, rating_required, comment_required, revision) VALUES (?, ?, ?, ?)
@@ -134,7 +141,8 @@ function signoff_save_policy(PDO $pdo, int $courseId, int $actorId, array $input
 
 function signoff_validate_completion(array $input, array $policy): array
 {
-    if (isset($input['policy_revision']) && $input['policy_revision'] !== $policy['revision']) {
+    if ((isset($input['policy_revision']) && $input['policy_revision'] !== $policy['revision'])
+        || ($input['task_revision'] ?? 0) !== ($policy['task_revision'] ?? 0)) {
         throw new SignoffConflict('Sign-off requirements changed. Reload the student and try again.');
     }
     $ratingId = $input['rating_option_id'] ?? null;
@@ -191,7 +199,10 @@ function signoff_update_progress(
         if (isset($input['expected_status']) && $input['expected_status'] !== $previous) {
             throw new SignoffConflict('This task changed. Reload the student and try again.');
         }
-        $policy = signoff_policy($pdo, $courseId);
+        $policy = signoff_effective_policy(
+            signoff_policy($pdo, $courseId),
+            signoff_task_overrides($pdo, $courseId, $detailId)[$detailId] ?? null
+        );
         [$ratingId, $label, $comment] = $status === 'completed'
             ? signoff_validate_completion($input, $policy)
             : [null, null, null];
@@ -218,7 +229,18 @@ function signoff_update_progress(
                                           policy_revision, rating_option_id, rating_label, signoff_comment)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
-        $stmt->execute([$courseId, $studentId, $detailId, $actorId, $previous, $status, $policy['revision'], $ratingId, $label, $comment]);
+        $position = $ratingId !== null && str_starts_with($ratingId, 'task:') ? (int)substr($ratingId, 5) : null;
+        $stmt->execute([
+            $courseId, $studentId, $detailId, $actorId, $previous, $status, $policy['revision'],
+            $position === null ? $ratingId : null, $label, $comment,
+        ]);
+        if ($policy['task_revision'] > 0) {
+            $eventId = $pdo->lastInsertId();
+            $stmt = $pdo->prepare(
+                'INSERT INTO signoff_task_event_policies (signoff_event_id, task_revision, rating_position) VALUES (?, ?, ?)'
+            );
+            $stmt->execute([$eventId, $policy['task_revision'], $position]);
+        }
         log_change($pdo, 'progress', $detailId, $courseId);
         $pdo->commit();
         return true;

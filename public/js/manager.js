@@ -284,6 +284,8 @@ async function loadSignoffRequirements(courseId) {
   form.signoffRequest = request;
   const isCurrent = () => activeCourseId === courseId && form.signoffRequest === request;
   form.hidden = true;
+  const taskForm = document.getElementById('managerTaskSignoffForm');
+  if (taskForm) taskForm.hidden = true;
   status.textContent = 'Loading requirements…';
   let policy;
   const refreshAddButton = () => { add.disabled = list.children.length >= 50; };
@@ -336,12 +338,13 @@ async function loadSignoffRequirements(courseId) {
     refreshAddButton();
   };
   try {
-    const response = await fetch(`./api/manager/signoff_policy.php?course_id=${encodeURIComponent(courseId)}`, { cache: 'no-store' });
+    const response = await fetch(`./api/manager/signoff_policy.php?course_id=${encodeURIComponent(courseId)}&include_tasks=1`, { cache: 'no-store' });
     if (!isCurrent()) return;
     if (!response.ok) throw new Error('Could not load sign-off requirements.');
     const data = await response.json();
     if (!isCurrent()) return;
     applyPolicy(data);
+    bindTaskSignoffSettings(courseId, data.tasks, isCurrent);
     form.hidden = false;
     status.textContent = '';
     add.onclick = () => appendChoice().focus();
@@ -384,6 +387,115 @@ async function loadSignoffRequirements(courseId) {
       if (isCurrent()) refreshAddButton();
     }
   };
+}
+
+function bindTaskSignoffSettings(courseId, tasks, isCurrent) {
+  const form = document.getElementById('managerTaskSignoffForm');
+  if (!form) return;
+  const task = document.getElementById('managerSignoffTask');
+  const fields = document.getElementById('managerTaskSignoffFields');
+  const rating = document.getElementById('managerTaskRating');
+  const comment = document.getElementById('managerTaskComment');
+  const source = document.getElementById('managerTaskChoiceSource');
+  const choices = document.getElementById('managerTaskChoices');
+  const choicesField = document.getElementById('managerTaskChoicesField');
+  const reset = document.getElementById('managerResetTaskSignoff');
+  const status = document.getElementById('managerTaskSignoffMessage');
+  const catalog = Array.isArray(tasks) ? tasks : [];
+  task.replaceChildren(new Option('Select a task', ''), ...catalog.map(item =>
+    new Option(`${item.category} · ${item.name}`, item.detail_id)));
+  task.disabled = catalog.length === 0;
+  form.hidden = false;
+  fields.hidden = true;
+  fields.disabled = true;
+  status.textContent = catalog.length ? '' : 'No progress tasks are available.';
+  let request;
+  let settings;
+  const endpoint = './api/manager/signoff_policy.php';
+  const syncChoices = () => {
+    choicesField.hidden = source.value !== 'custom';
+  };
+  const apply = (data) => {
+    settings = data;
+    const { overrides, defaults } = data;
+    for (const [control, key] of [[rating, 'rating_required'], [comment, 'comment_required']]) {
+      control.replaceChildren(
+        new Option(`Inherit course default (${defaults[key] ? 'required' : 'optional'})`, 'inherit'),
+        new Option('Require for this task', 'true'),
+        new Option('Optional for this task', 'false')
+      );
+      control.value = overrides[key] === null ? 'inherit' : String(overrides[key]);
+    }
+    source.value = overrides.options === null ? 'inherit' : 'custom';
+    choices.value = overrides.options?.join('\n') ?? '';
+    reset.disabled = Object.values(overrides).every(value => value === null);
+    syncChoices();
+    fields.hidden = false;
+    fields.disabled = false;
+  };
+  const exchange = async (url, options) => {
+    const response = await fetch(url, options);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Could not load or save the task requirements.');
+    return data;
+  };
+  task.onchange = async () => {
+    const load = Symbol();
+    request = load;
+    settings = null;
+    fields.hidden = true;
+    fields.disabled = true;
+    const detailId = task.value;
+    status.textContent = detailId ? 'Loading task requirements…' : '';
+    if (!detailId || !isCurrent()) return;
+    try {
+      const data = await exchange(`${endpoint}?course_id=${encodeURIComponent(courseId)}&detail_id=${encodeURIComponent(detailId)}`, { cache: 'no-store' });
+      if (!isCurrent() || request !== load) return;
+      apply(data);
+      status.textContent = '';
+    } catch (error) {
+      if (isCurrent() && request === load) status.textContent = error.message;
+    }
+  };
+  source.onchange = syncChoices;
+
+  const saveTask = async (restoreDefaults) => {
+    if (!settings || fields.disabled || !isCurrent()) return;
+    const save = request;
+    const parseRequirement = value => value === 'inherit' ? null : value === 'true';
+    const body = {
+      course_id: courseId,
+      detail_id: task.value,
+      revision: settings.revision,
+      task_revision: settings.task_revision,
+      rating_required: restoreDefaults ? null : parseRequirement(rating.value),
+      comment_required: restoreDefaults ? null : parseRequirement(comment.value),
+      options: restoreDefaults || source.value === 'inherit' ? null
+        : choices.value.split(/\r?\n/).map(label => label.trim()).filter(Boolean),
+    };
+    fields.disabled = true;
+    status.textContent = 'Saving task requirements…';
+    try {
+      const data = await exchange(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!isCurrent() || request !== save) return;
+      apply(data);
+      status.textContent = restoreDefaults ? 'Task now uses the course defaults.' : 'Task requirements saved.';
+    } catch (error) {
+      if (isCurrent() && request === save) {
+        status.textContent = error.message;
+        fields.disabled = false;
+      }
+    }
+  };
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    saveTask(false);
+  };
+  reset.onclick = () => saveTask(true);
 }
 
 async function loadProgressSummary() {

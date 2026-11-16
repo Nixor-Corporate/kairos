@@ -96,9 +96,14 @@ if (table_exists($pdo, 'ta_comments')) {
 
 $policy = signoff_policy($pdo, $courseId);
 $policy['options'] = array_values(array_filter($policy['options'], static fn(array $option): bool => $option['active']));
+$taskPolicies = array_map(
+    static fn(array $task): array => signoff_effective_policy($policy, $task),
+    signoff_task_overrides($pdo, $courseId)
+);
 json_out([
     'studentName'       => $studentName === false ? null : $studentName,
     'signoffPolicy'     => $policy,
+    'taskSignoffPolicies' => (object)$taskPolicies,
     'categories'        => $categories,
     'detailsByCategory' => $detailsByCat,
     'userStatuses'      => (object)$statuses,

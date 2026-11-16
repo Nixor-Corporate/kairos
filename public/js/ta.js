@@ -120,7 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (select.value === previous) return;
       const courseId = taState.selectedCourse;
       const studentId = taState.selectedStudent;
-      const policy = taState.signoffPolicy;
+      const policy = taState.taskSignoffPolicies?.[detailId] ?? taState.signoffPolicy;
       select.disabled = true;
       select.value = previous;
       try {
@@ -129,6 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
           await saveProgress(select, detailId, studentId, status, previous, {
             policy_revision: policy?.revision,
+            task_revision: policy?.task_revision,
           });
         }
       } catch (err) {
@@ -914,6 +915,7 @@ function renderStudentPanel(data, userId) {
 
   taState.statusOptions = Array.isArray(data?.statuses) ? data.statuses : [];
   taState.signoffPolicy = data?.signoffPolicy;
+  taState.taskSignoffPolicies = data?.taskSignoffPolicies;
   const area = document.getElementById('taProgressArea');
   if (area) {
     area.dataset.student = String(userId);
@@ -1101,6 +1103,7 @@ function confirmSignoff(select, detailId, studentId, status, previous, policy) {
           rating_option_id: rating.value || null,
           comment: comment.value,
           policy_revision: policy.revision,
+          task_revision: policy.task_revision,
         });
         dialog.close();
       } catch (err) {

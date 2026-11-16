@@ -421,7 +421,7 @@
           <section class="k-card"><div class="k-card__body">
             <details open class="signoff-settings"><summary>Sign-off requirements</summary>
               <form class="k-panel-gap">
-                <p>Set the requirements for marking any progress task complete in this course.</p>
+                <p>Set the course defaults for completing progress tasks.</p>
                 <div class="k-toolbar">
                   <label><input type="checkbox" role="switch" checked> Require a rating</label>
                   <label><input type="checkbox" role="switch" checked> Require a comment</label>
@@ -430,6 +430,14 @@
                   <li class="k-toolbar"><input class="input" value="${label}" aria-label="Rating label"><label><input type="checkbox" checked> Active</label>
                     <button type="button" class="btn btn-secondary btn-sm">Move up</button><button type="button" class="btn btn-secondary btn-sm">Move down</button></li>`).join('')}</ol>
                 <div class="k-toolbar"><button type="button" class="btn btn-secondary">Add rating choice</button><button class="btn btn-primary">Save requirements</button></div>
+              </form>
+              <form class="k-panel-gap">
+                <h3>Task overrides</h3>
+                <div class="field"><label for="fixtureSignoffTask">Progress task</label><select class="input" id="fixtureSignoffTask"><option>Lab 2 · Debugging exercise</option></select></div>
+                <div class="field"><label for="fixtureTaskRating">Rating requirement</label><select class="input" id="fixtureTaskRating"><option>Inherit course default (required)</option></select></div>
+                <div class="field"><label for="fixtureTaskComment">Comment requirement</label><select class="input" id="fixtureTaskComment"><option>Optional for this task</option></select></div>
+                <div class="field"><label for="fixtureChoiceSource">Rating choices</label><select class="input" id="fixtureChoiceSource"><option>Inherit course choices</option></select></div>
+                <div class="k-toolbar"><button type="button" class="btn btn-primary">Save task overrides</button><button type="button" class="btn btn-ghost">Reset to course defaults</button></div>
               </form>
             </details>
           </div></section>
