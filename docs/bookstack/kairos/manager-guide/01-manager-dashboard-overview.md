@@ -27,7 +27,7 @@ Select **View** next to an enrolled student to see their recent sign-offs. A sav
 
 ## Download student progress
 
-Select **Download Excel workbook** in **Student progress**. The workbook covers the selected course and its currently enrolled students. It contains separate sheets for task progress, sign-offs, serving sessions, lesson completions, quiz attempts, submissions, and grades. Keep the file in approved institutional storage.
+Select **Download Excel workbook** in **Student progress**. The workbook covers the selected course, including current students and retained records for former students. The **Enrollments** sheet shows **Indeterminate** when the available records cannot establish past enrollment. See **About** for counts of records excluded for conflicting links. Keep the file in approved institutional storage.
 
 ## Screenshot
 

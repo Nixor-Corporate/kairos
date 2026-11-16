@@ -51,6 +51,13 @@ function remove_student_course_grants(PDO $pdo, int $userId, int $courseId): boo
             $stmt->execute([$userId, $courseId]);
             $removed = $stmt->rowCount() > 0 || $removed;
         }
+        if ($removed) {
+            $record = $pdo->prepare(
+                'INSERT INTO course_student_withdrawals (course_id, user_id) VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE withdrawn_at = CURRENT_TIMESTAMP'
+            );
+            $record->execute([$courseId, $userId]);
+        }
         $pdo->commit();
         return $removed;
     } catch (Throwable $error) {

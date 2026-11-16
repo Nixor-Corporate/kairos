@@ -47,4 +47,27 @@ try {
 } finally {
     unlink($path);
 }
-echo "Workbook writer checks passed\n";
+$target = tempnam(sys_get_temp_dir(), 'kairos-workbook-failure-');
+$book = new XlsxWorkbook($target);
+$worksheetPath = null;
+$rows = (static function () use ($book, &$worksheetPath): Generator {
+    $paths = new ReflectionProperty(XlsxWorkbook::class, 'files');
+    $handle = new ReflectionProperty(XlsxWorkbook::class, 'sheetFile');
+    $worksheetPath = $paths->getValue($book)[0];
+    fclose($handle->getValue($book));
+    $handle->setValue($book, fopen($worksheetPath, 'rb'));
+    yield ['Fixture row'];
+})();
+try {
+    try {
+        $book->addSheet('Short write', ['Data' => 'text'], $rows);
+        throw new RuntimeException('The test should have interrupted worksheet generation');
+    } catch (RuntimeException $error) {
+        assert_workbook($error->getMessage() === 'Could not write complete worksheet', 'Write failure must propagate');
+    }
+    $book->close();
+    assert_workbook(is_string($worksheetPath) && !is_file($worksheetPath), 'Failed worksheet must be removed');
+} finally {
+    if (is_file($target)) unlink($target);
+}
+echo "Workbook writer and failed-write cleanup checks passed\n";

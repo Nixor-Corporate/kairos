@@ -11,6 +11,7 @@ final class XlsxWorkbook
     private ZipArchive $zip;
     private array $sheets = [];
     private array $files = [];
+    private $sheetFile = null;
 
     public function __construct(string $path)
     {
@@ -24,20 +25,27 @@ final class XlsxWorkbook
     public function addSheet(string $name, array $columns, iterable $rows): void
     {
         $part = 1;
-        $xml = $this->openSheet($name, $columns);
         $rowNumber = 1;
         try {
+            $xml = $this->openSheet($name, $columns);
+            $types = array_values($columns);
             foreach ($rows as $row) {
                 if ($rowNumber === self::ROW_LIMIT) {
                     $this->finishSheet($xml, $rowNumber, count($columns));
                     $xml = $this->openSheet($name . ' ' . ++$part, $columns);
                     $rowNumber = 1;
                 }
-                $this->writeRow($xml, ++$rowNumber, array_values($row), array_values($columns));
+                $this->writeRow($xml, ++$rowNumber, array_values($row), $types);
+                if ($rowNumber % 128 === 0) {
+                    $this->writeSheetChunk($xml);
+                }
             }
             $this->finishSheet($xml, $rowNumber, count($columns));
         } finally {
-            unset($xml);
+            if (is_resource($this->sheetFile)) {
+                fclose($this->sheetFile);
+                $this->sheetFile = null;
+            }
         }
     }
 
@@ -50,7 +58,8 @@ final class XlsxWorkbook
         $this->files[] = $file;
         $this->sheets[] = $name;
         $xml = new XMLWriter();
-        if (!$xml->openUri($file)) {
+        $this->sheetFile = @fopen($file, 'wb');
+        if ($this->sheetFile === false || !$xml->openMemory()) {
             throw new RuntimeException('Could not open worksheet');
         }
         $xml->startDocument('1.0', 'UTF-8');
@@ -133,13 +142,24 @@ final class XlsxWorkbook
         $xml->endElement();
         $xml->endElement();
         $xml->endDocument();
-        if ($xml->flush() === false) {
-            throw new RuntimeException('Could not write worksheet');
+        $this->writeSheetChunk($xml);
+        $closed = fclose($this->sheetFile);
+        $this->sheetFile = null;
+        if (!$closed) {
+            throw new RuntimeException('Could not close worksheet');
         }
         $file = $this->files[count($this->files) - 1];
         $entry = 'xl/worksheets/sheet' . count($this->sheets) . '.xml';
         if (!$this->zip->addFile($file, $entry)) {
             throw new RuntimeException('Could not register worksheet');
+        }
+    }
+
+    private function writeSheetChunk(XMLWriter $xml): void
+    {
+        $chunk = $xml->outputMemory(true);
+        if ($chunk !== '' && @fwrite($this->sheetFile, $chunk) !== strlen($chunk)) {
+            throw new RuntimeException('Could not write complete worksheet');
         }
     }
 
@@ -186,14 +206,20 @@ final class XlsxWorkbook
         }
     }
 
-    public function __destruct()
+    public function close(): void
     {
         // Release the archive before removing its source files, including on Windows.
         unset($this->zip);
         foreach ($this->files as $file) {
             if (is_file($file)) {
-                unlink($file);
+                @unlink($file);
             }
         }
+        $this->files = [];
+    }
+
+    public function __destruct()
+    {
+        $this->close();
     }
 }
