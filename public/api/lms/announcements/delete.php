@@ -36,7 +36,8 @@ try {
         throw new RuntimeException('announcement update did not affect one row');
     }
     lms_announcement_audit($pdo, $announcementId, $courseId, $actorId, 'delete', $existing, null);
-    $event = lms_announcement_event($actorId, $announcementId, $courseId, 'announcement.deleted');
+    $audience = lms_announcement_event_delta($existing)['audience'];
+    $event = lms_announcement_event($actorId, $announcementId, $courseId, 'announcement.deleted', ['audience' => $audience]);
     lms_emit_event($pdo, 'announcement.deleted', $event);
     $pdo->commit();
 } catch (Throwable $e) {

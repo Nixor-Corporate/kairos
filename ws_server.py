@@ -2,24 +2,25 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
+import ipaddress
+import json
 import os
 import re
 import threading
 import time
-
-import json
-
-try:
-    import pymysql  # type: ignore
-except Exception:  # pragma: no cover
-    pymysql = None
+from contextlib import closing
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Set
+from urllib.parse import urlsplit
 
+import pymysql
 from flask import Flask, abort, jsonify, request
-from flask_socketio import SocketIO, join_room
+from flask_socketio import SocketIO
 from werkzeug.exceptions import HTTPException
+
+from ws_relay_access import RelayAccess
 
 
 def _load_env_file(path: str) -> None:
@@ -74,44 +75,45 @@ def _normalize_socket_path(raw: str) -> str:
 
 
 DEFAULT_CHANNELS = {"rooms", "queue", "progress", "ta_accept", "projector"}
-TOKEN_TTL_SECONDS = int(os.getenv("WS_TOKEN_TTL", "600") or 600)
 WS_SOCKET_PATH = _normalize_socket_path(os.getenv("WS_SOCKET_PATH", "/websocket/socket.io/"))
 WS_SHARED_SECRET = os.getenv("WS_SHARED_SECRET", "").strip()
+WS_DB_USER = os.getenv("WS_DB_USERNAME")
+WS_DB_PASSWORD = os.getenv("WS_DB_PASSWORD")
 WS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv("WS_ALLOWED_ORIGINS", "https://kairos.nixorcorporate.com").split(",")
     if origin.strip()
 ]
 WS_EMIT_MAX_BYTES = int(os.getenv("WS_EMIT_MAX_BYTES", "65536") or 65536)
-WS_LOG_DEBUG = (os.getenv("WS_LOG_DEBUG", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
 EVENT_NAME_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
-COURSE_ACCESS_MAPPINGS: Dict[str, tuple[str, str, str, Optional[str]]] = {
-    "manager_courses": ("manager_courses", "user_id", "course_id", None),
-    "course_staff": ("course_staff", "user_id", "course_id", "role"),
-    "course_roles": ("course_roles", "user_id", "course_id", "role"),
-    "enrollments": ("enrollments", "user_id", "course_id", "role"),
-    "user_courses": ("user_courses", "user_id", "course_id", "role"),
-    "ta_courses": ("ta_courses", "ta_user_id", "course_id", None),
-    "course_tas": ("course_tas", "user_id", "course_id", None),
-    "ta_enrollments": ("ta_enrollments", "user_id", "course_id", None),
-    "staff_courses": ("staff_courses", "user_id", "course_id", None),
-    "student_courses": ("student_courses", "user_id", "course_id", None),
-}
+TOKEN_RE = re.compile(r"[a-f0-9]{64}")
+LMS_CHANNELS = {"lms_content", "lms_quiz", "lms_assignment", "lms_grade", "lms_analytics", "lms_announcement"}
 OUTBOX_POLL_SECONDS = float(os.getenv("LMS_OUTBOX_POLL_SECONDS", "1") or 1)
 LMS_OUTBOX_ENABLED = (os.getenv("LMS_OUTBOX_ENABLED", "1") or "1").strip() not in {"0", "false", "False"}
 
 if not WS_SHARED_SECRET:
     raise RuntimeError("WS_SHARED_SECRET must be configured")
+if (WS_DB_USER is not None or WS_DB_PASSWORD is not None) and not (WS_DB_USER and WS_DB_PASSWORD):
+    raise RuntimeError("WS_DB_USERNAME and WS_DB_PASSWORD must be configured together")
+
+
+def _valid_origin(value: str) -> bool:
+    url = urlsplit(value)
+    secure = url.scheme == "https" or (url.scheme == "http" and url.hostname in {"127.0.0.1", "::1", "localhost"})
+    return (secure and bool(url.hostname) and "*" not in value and url.username is None and url.password is None
+            and not (url.path or url.query or url.fragment))
+
+
+if not WS_ALLOWED_ORIGINS or not all(_valid_origin(origin) for origin in WS_ALLOWED_ORIGINS):
+    raise RuntimeError("WS_ALLOWED_ORIGINS must contain exact HTTPS or development loopback origins")
 
 
 def _open_db(*, autocommit: bool = True):
-    if pymysql is None:
-        raise RuntimeError("pymysql is required for realtime authorization")
     return pymysql.connect(
         host=os.getenv("DB_HOST", "127.0.0.1"),
         port=int(os.getenv("DB_PORT", "3306") or 3306),
-        user=os.getenv("DB_USERNAME", ""),
-        password=os.getenv("DB_PASSWORD", ""),
+        user=WS_DB_USER if WS_DB_USER is not None else os.getenv("DB_USERNAME", ""),
+        password=WS_DB_PASSWORD if WS_DB_PASSWORD is not None else os.getenv("DB_PASSWORD", ""),
         database=os.getenv("DB_DATABASE", "kairos"),
         cursorclass=pymysql.cursors.DictCursor,
         autocommit=autocommit,
@@ -121,135 +123,12 @@ def _open_db(*, autocommit: bool = True):
     )
 
 
-def _mapping_grants(
-    cursor: Any,
-    *,
-    mapping_key: str,
-    user_id: int,
-    course_id: int,
-    allowed_roles: Optional[Set[str]] = None,
-) -> bool:
-    if mapping_key not in COURSE_ACCESS_MAPPINGS:
-        raise ValueError(f"Unsupported course access mapping: {mapping_key}")
-    table, user_column, course_column, role_column = COURSE_ACCESS_MAPPINGS[mapping_key]
-
-    columns = [user_column, course_column]
-    if role_column:
-        columns.append(role_column)
-    placeholders = ",".join(["%s"] * len(columns))
-    cursor.execute(
-        "SELECT COUNT(*) AS column_count FROM information_schema.COLUMNS "
-        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s "
-        f"AND COLUMN_NAME IN ({placeholders})",
-        [table, *columns],
-    )
-    row = cursor.fetchone() or {}
-    if int(row.get("column_count") or 0) != len(columns):
-        return False
-
-    sql = (
-        f"SELECT 1 FROM `{table}` "
-        f"WHERE `{user_column}` = %s AND `{course_column}` = %s"
-    )
-    args: list[Any] = [user_id, course_id]
-    if role_column and allowed_roles:
-        role_placeholders = ",".join(["%s"] * len(allowed_roles))
-        sql += f" AND LOWER(`{role_column}`) IN ({role_placeholders})"
-        args.extend(sorted(allowed_roles))
-    sql += " LIMIT 1"
-    cursor.execute(sql, args)
-    return cursor.fetchone() is not None
-
-
-def _user_can_access_course(user_id: int, course_id: int) -> bool:
-    if user_id <= 0 or course_id <= 0:
-        return False
-
-    connection = None
-    try:
-        connection = _open_db()
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT LOWER(r.name) AS role_name "
-                "FROM users u JOIN roles r ON r.role_id = u.role_id "
-                "WHERE u.user_id = %s LIMIT 1",
-                (user_id,),
-            )
-            role_row = cursor.fetchone() or {}
-            role = str(role_row.get("role_name") or "").lower()
-            if role == "admin":
-                return True
-
-            mappings = [("student_courses", None)]
-            if role == "manager":
-                mappings.extend([
-                    ("manager_courses", None),
-                    ("course_staff", {"manager"}),
-                    ("course_roles", {"manager"}),
-                    ("enrollments", {"manager"}),
-                    ("user_courses", {"manager"}),
-                ])
-            elif role == "ta":
-                mappings.extend([
-                    ("course_staff", {"ta", "manager"}),
-                    ("course_roles", {"ta", "manager"}),
-                    ("enrollments", {"ta", "manager"}),
-                    ("user_courses", {"ta", "manager"}),
-                    ("ta_courses", None),
-                    ("course_tas", None),
-                    ("ta_enrollments", None),
-                    ("staff_courses", None),
-                ])
-            elif role != "student":
-                return False
-
-            for mapping_key, allowed_roles in mappings:
-                if _mapping_grants(
-                    cursor,
-                    mapping_key=mapping_key,
-                    user_id=user_id,
-                    course_id=course_id,
-                    allowed_roles=allowed_roles,
-                ):
-                    return True
-
-    except Exception:
-        app.logger.exception(
-            "realtime course authorization failed user=%s course=%s",
-            user_id,
-            course_id,
-        )
-    finally:
-        if connection is not None:
-            connection.close()
-    return False
-
-
-def _room_course_id(room_id: int) -> Optional[int]:
-    connection = None
-    try:
-        connection = _open_db()
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT CAST(course_id AS UNSIGNED) AS course_id "
-                "FROM rooms WHERE room_id = %s LIMIT 1",
-                (room_id,),
-            )
-            row = cursor.fetchone() or {}
-            return _parse_int(row.get("course_id"))
-    except Exception:
-        app.logger.exception("realtime room authorization failed room=%s", room_id)
-        return None
-    finally:
-        if connection is not None:
-            connection.close()
-
-
 def _parse_int(value: Any) -> Optional[int]:
     if value is None:
         return None
     try:
-        return int(str(value).strip())
+        parsed = int(str(value).strip())
+        return parsed if 0 < parsed <= (2**63 - 1) else None
     except (TypeError, ValueError):
         return None
 
@@ -258,8 +137,7 @@ def _parse_channels(raw: Optional[str]) -> Set[str]:
     if not raw:
         return set(DEFAULT_CHANNELS)
     requested = {part.strip() for part in raw.split(",") if part.strip()}
-    matched = requested & DEFAULT_CHANNELS
-    return matched or set(DEFAULT_CHANNELS)
+    return requested & (DEFAULT_CHANNELS | LMS_CHANNELS)
 
 
 def _build_payload(message: Dict[str, Any]) -> Dict[str, Any]:
@@ -279,30 +157,11 @@ def _build_payload(message: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _token_is_valid(token: Optional[str]) -> tuple[bool, Optional[int]]:
-    if not token:
-        return False, None
-    parts = token.split(".")
-    if len(parts) != 3:
-        return False, None
-    digest, ts_raw, user_raw = parts
-    ts = _parse_int(ts_raw)
-    user_id = _parse_int(user_raw)
-    if ts is None or user_id is None:
-        return False, None
-    if TOKEN_TTL_SECONDS > 0 and abs(int(time.time()) - ts) > TOKEN_TTL_SECONDS:
-        return False, None
-    payload = f"{user_id}|{ts}".encode()
-    expected = hmac.new(WS_SHARED_SECRET.encode(), payload, "sha256").hexdigest()
-    if not hmac.compare_digest(expected, digest):
-        return False, None
-    return True, user_id
-
-
 @dataclass
 class ClientState:
     sid: str
     user_id: int
+    token_hash: str
     channels: Set[str]
     course_id: Optional[int]
     room_id: Optional[int]
@@ -316,8 +175,8 @@ socketio = SocketIO(
     async_mode="eventlet",
     cors_allowed_origins=WS_ALLOWED_ORIGINS,
     path=_socketio_internal_path,
-    logger=WS_LOG_DEBUG,
-    engineio_logger=WS_LOG_DEBUG,
+    logger=False,
+    engineio_logger=False,
 )
 
 _connections: Dict[str, ClientState] = {}
@@ -328,6 +187,8 @@ _connections_lock = threading.Lock()
 # this alias, importing the module would raise ``AttributeError: module has no
 # attribute 'application'`` and prevent the websocket relay from starting.
 application = app
+
+
 def _record_connection(sid: str, state: ClientState) -> None:
     with _connections_lock:
         _connections[sid] = state
@@ -338,60 +199,98 @@ def _drop_connection(sid: str) -> None:
         _connections.pop(sid, None)
 
 
-def _room_names(state: ClientState) -> Set[str]:
-    rooms: Set[str] = set()
-    for channel in state.channels:
-        rooms.add(f"channel::{channel}")
-        if state.course_id is not None:
-            rooms.add(f"channel::{channel}::course::{state.course_id}")
-        if state.room_id is not None:
-            rooms.add(f"channel::{channel}::room::{state.room_id}")
-        if state.course_id is not None and state.room_id is not None:
-            rooms.add(
-                f"channel::{channel}::course::{state.course_id}::room::{state.room_id}"
-            )
-    rooms.add(f"user::{state.user_id}")
-    return rooms
-
-
-def _channel_for_event(event_name: str) -> str:
-    if event_name.startswith("projector_"):
+def _event_channel(event_name: str) -> Optional[str]:
+    if event_name in ("projector_serve", "projector_call_again"):
         return "projector"
-    return event_name if event_name in DEFAULT_CHANNELS else "progress"
+    return event_name if event_name in DEFAULT_CHANNELS else None
 
 
-def _emit_scoped_event(payload: Dict[str, Any]) -> int:
-    channel = _channel_for_event(str(payload.get("event") or ""))
+def _matches_subscription(state: ClientState, channel: Optional[str], course_id: int,
+                          room_id: Optional[int], target_id: Optional[int]) -> bool:
+    if channel is None:
+        return state.course_id == course_id and bool(state.channels & LMS_CHANNELS)
+    if channel not in state.channels:
+        return False
+    if channel == "ta_accept":
+        return (state.user_id == target_id and state.course_id in (None, course_id)
+                and state.room_id in (None, room_id))
+    return state.course_id == course_id and (room_id is None or state.room_id == room_id)
+
+
+def _can_receive(state: ClientState, staff: bool, channel: Optional[str], event: str,
+                 payload: Dict[str, Any], target_id: Optional[int]) -> bool:
+    if channel == "projector":
+        return staff
+    if channel == "progress":
+        return staff or state.user_id == target_id
+    if channel is not None:
+        return True
+
+    if event.startswith("announcement."):
+        return staff or payload.get("audience") == "course"
+    if payload.get("status") == "draft" and event.startswith(("quiz.", "assignment.")):
+        return staff
+    if event.startswith(("grade.", "quiz.attempt.", "assignment.submission.", "grading.")) or event in (
+        "lesson.completed", "course.enrollment.updated"
+    ):
+        return staff or state.user_id == target_id
+    return True
+
+
+def _emit_authorized(payload: Dict[str, Any], *, lms: bool = False) -> int:
+    event = payload.get("event_name" if lms else "event")
+    if not isinstance(event, str) or EVENT_NAME_RE.fullmatch(event) is None or (lms and "." not in event):
+        return 0
+    channel = None if lms else _event_channel(event)
+    if not lms and channel is None:
+        return 0
     course_id = _parse_int(payload.get("course_id"))
     room_id = _parse_int(payload.get("room_id"))
-    if course_id is not None and room_id is not None:
-        room = f"channel::{channel}::course::{course_id}::room::{room_id}"
-    elif course_id is not None:
-        room = f"channel::{channel}::course::{course_id}"
-    elif room_id is not None:
-        room = f"channel::{channel}::room::{room_id}"
-    else:
-        room = f"channel::{channel}"
-    socketio.emit(payload["event"], payload, room=room)
-    return 1
-
-
-def _emit_course_scoped(payload: Dict[str, Any]) -> int:
-    course_id = _parse_int(payload.get("course_id"))
-    if course_id is None:
-        app.logger.warning(
-            "dropping LMS event without course scope event=%s",
-            payload.get("event") or payload.get("event_name") or "unknown",
-        )
+    if course_id is None and room_id is None:
+        return 0
+    if any(payload.get(key) is not None and value is None for key, value in (
+        ("course_id", course_id), ("room_id", room_id)
+    )):
         return 0
 
-    room_name = f"course:{course_id}"
-    socketio.emit(payload["event"], payload, room=room_name)
-    return 1
+    details = payload if lms else payload["payload"]
+    target_id = _parse_int(details.get("student_user_id") or details.get("user_id"))
+    if lms and target_id is None and (
+        event.startswith(("quiz.attempt.", "assignment.submission.")) or event == "course.enrollment.updated"
+    ):
+        target_id = _parse_int(details.get("actor_id"))
+
+    with _connections_lock:
+        clients = tuple(_connections.values())
+    if not clients:
+        return 0
+
+    sent = 0
+    with closing(_open_db()) as connection, connection.cursor() as cursor:
+        access = RelayAccess(cursor)
+        course_id = access.resolve_course(course_id, room_id)
+        if course_id is None:
+            return 0
+        for state in clients:
+            if not _matches_subscription(state, channel, course_id, room_id, target_id):
+                continue
+            identity = access.identity(state.token_hash)
+            if identity is None or identity[0] != state.user_id:
+                socketio.server.disconnect(state.sid, namespace="/")
+                continue
+            allowed, staff = access.course_access(identity, course_id)
+            if not allowed:
+                if state.course_id is not None:
+                    socketio.server.disconnect(state.sid, namespace="/")
+                continue
+            if _can_receive(state, staff, channel, event, details, target_id):
+                socketio.emit(event, payload, to=state.sid)
+                sent += 1
+    return sent
 
 
 def _outbox_worker() -> None:
-    if not LMS_OUTBOX_ENABLED or pymysql is None:
+    if not LMS_OUTBOX_ENABLED:
         app.logger.info("LMS outbox worker disabled")
         return
 
@@ -416,15 +315,15 @@ def _outbox_worker() -> None:
                         payload = json.loads(payload)
                     if not isinstance(payload, dict):
                         payload = {"event": "lms.event", "payload": payload}
-                    payload.setdefault("event", payload.get("event_name", "lms.event"))
-                    _emit_course_scoped(payload)
+                    payload.setdefault("event_name", payload.get("event", "lms.event"))
+                    _emit_authorized(payload, lms=True)
                     delivered_ids.append(row["event_id"])
 
                 update_sql = "UPDATE lms_event_outbox SET delivered_at = NOW() WHERE event_id IN (" + ",".join(["%s"] * len(delivered_ids)) + ")"
                 cursor.execute(update_sql, delivered_ids)
                 connection.commit()
         except Exception as exc:  # pragma: no cover
-            app.logger.exception("LMS outbox worker error: %s", exc)
+            app.logger.error("LMS outbox worker error class=%s", type(exc).__name__)
             if connection is not None:
                 try:
                     connection.rollback()
@@ -440,70 +339,60 @@ def _outbox_worker() -> None:
 
 
 @socketio.on("connect")
-def handle_connect():
-    token = request.args.get("token", "").strip()
-    ok, user_id = _token_is_valid(token)
-    if not ok or user_id is None:
+def handle_connect(auth=None):
+    if request.headers.get("Origin") not in WS_ALLOWED_ORIGINS:
         return False
+    token = auth.get("token") if isinstance(auth, dict) else None
+    if not isinstance(token, str) or TOKEN_RE.fullmatch(token) is None:
+        return False
+    token_hash = hashlib.sha256(token.encode("ascii")).hexdigest()
 
     channels = _parse_channels(request.args.get("channels"))
     course_id = _parse_int(request.args.get("course_id"))
     room_id = _parse_int(request.args.get("room_id"))
-    sid = request.sid
-
-    if room_id is not None:
-        room_course_id = _room_course_id(room_id)
-        if room_course_id is None:
-            return False
-        if course_id is not None and course_id != room_course_id:
-            return False
-        course_id = room_course_id
-
-    if course_id is not None and not _user_can_access_course(user_id, course_id):
-        app.logger.warning(
-            "realtime subscription denied user=%s course=%s room=%s",
-            user_id,
-            course_id,
-            room_id,
-        )
+    if not channels or any(key in request.args and value is None for key, value in (
+        ("course_id", course_id), ("room_id", room_id)
+    )):
         return False
 
-    state = ClientState(
-        sid=sid,
-        user_id=user_id,
-        channels=channels,
-        course_id=course_id,
-        room_id=room_id,
-    )
-    _record_connection(sid, state)
+    try:
+        with closing(_open_db()) as connection, connection.cursor() as cursor:
+            access = RelayAccess(cursor)
+            identity = access.identity(token_hash)
+            if identity is None:
+                return False
+            if course_id is not None or room_id is not None:
+                course_id = access.resolve_course(course_id, room_id)
+                if course_id is None:
+                    return False
+                allowed, staff = access.course_access(identity, course_id)
+                if not allowed:
+                    return False
+                if not staff or room_id is None:
+                    channels.discard("projector")
+            else:
+                channels.discard("projector")
+            if not channels:
+                return False
+    except Exception as error:
+        app.logger.warning("realtime subscription unavailable class=%s", type(error).__name__)
+        return False
 
-    for room_name in sorted(_room_names(state)):
-        join_room(room_name)
-    if course_id is not None:
-        join_room(f"course:{course_id}")
-
-    app.logger.info(
-        "client connected user=%s channels=%s course_id=%s room_id=%s",
-        user_id,
-        ",".join(sorted(channels)) or "*",
-        course_id,
-        room_id,
-    )
+    state = ClientState(request.sid, identity[0], token_hash, channels, course_id, room_id)
+    _record_connection(request.sid, state)
 
 
 @socketio.on("disconnect")
 def handle_disconnect():
-    sid = request.sid
-    state = _connections.get(sid)
-    if state:
-        app.logger.info("client disconnected user=%s", state.user_id)
-    _drop_connection(sid)
+    _drop_connection(request.sid)
 
 
 @app.post("/emit")
 def handle_emit():
+    peer = ipaddress.ip_address(request.remote_addr) if request.remote_addr is not None else None
     provided_secret = request.headers.get("X-Kairos-WS-Secret", "")
-    if not provided_secret or not hmac.compare_digest(provided_secret, WS_SHARED_SECRET):
+    if (peer is None or not peer.is_loopback or request.headers.get("Origin") is not None
+            or not hmac.compare_digest(provided_secret.encode(), WS_SHARED_SECRET.encode())):
         abort(403)
 
     if request.content_length is not None and request.content_length > WS_EMIT_MAX_BYTES:
@@ -514,13 +403,17 @@ def handle_emit():
         abort(400, description="invalid json payload")
 
     event_name = str(message.get("event") or "").strip()
-    if not event_name or not EVENT_NAME_RE.match(event_name):
+    if EVENT_NAME_RE.fullmatch(event_name) is None or _event_channel(event_name) is None:
         abort(400, description="event is required")
 
     outbound = _build_payload(message)
-    outbound["event"] = event_name
+    for key in ("course_id", "room_id"):
+        if message.get(key) is not None and outbound[key] is None:
+            abort(400, description="invalid scope")
+    if outbound["course_id"] is None and outbound["room_id"] is None:
+        abort(400, description="scope is required")
 
-    recipients = _emit_scoped_event(outbound)
+    recipients = _emit_authorized(outbound)
     return jsonify({"ok": True, "sent": recipients})
 
 
@@ -528,10 +421,10 @@ def handle_emit():
 def handle_exception(exc: Exception):
     if isinstance(exc, HTTPException):
         if exc.code >= 500:
-            app.logger.exception("HTTP exception: %s", exc)
+            app.logger.error("relay HTTP error status=%s", exc.code)
         return exc
 
-    app.logger.exception("Uncaught exception: %s", exc)
+    app.logger.error("relay request error class=%s", type(exc).__name__)
     return jsonify({"ok": False, "error": "internal_error"}), 500
 
 
@@ -541,7 +434,7 @@ if LMS_OUTBOX_ENABLED:
 if __name__ == "__main__":
     socketio.run(
         app,
-        host="0.0.0.0",
+        host="127.0.0.1",
         port=8090,
     )
 

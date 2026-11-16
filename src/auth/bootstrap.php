@@ -146,6 +146,8 @@ function kairos_require_auth_csrf(?array $input = null): void
 
 function kairos_establish_auth_session(array $user): void
 {
+    require_once dirname(__DIR__) . '/realtime_session.php';
+    kairos_revoke_realtime_token();
     session_regenerate_id(true);
     $_SESSION = [];
     $_SESSION['user'] = [

@@ -91,7 +91,8 @@ assert.match(rootApache, /\|templates\|/);
 assert.match(rootApache, /RewriteRule \^composer\\\.\(json\|lock\)\$/);
 assert.match(rootApache, /RewriteRule \^api\/\(\.\*\)\$ public\/api\/\$1 \[L\]/);
 assert.match(rootApache, /RewriteRule \^ws\$ ws:\/\/127\.0\.0\.1:8090\/ws \[P,L\]/);
-assert.match(rootApache, /RewriteRule \^emit\$ http:\/\/127\.0\.0\.1:8090\/emit \[P,L\]/);
+assert.match(rootApache, /RewriteRule .*emit.* \[F,END,NC\]/);
+assert.doesNotMatch(rootApache, /RewriteRule .* http:\/\/.*\/emit /);
 assert.ok(
   rootApache.indexOf('RewriteRule ^api/(.*)$') < rootApache.indexOf('public/html.php?page=index'),
   'API routing must remain before HTML routing',
@@ -183,13 +184,13 @@ for (const endpoint of ['public/api/queue_participants.php', 'public/api/queue_e
 }
 
 const websocketServer = read('ws_server.py');
-assert.match(websocketServer, /_user_can_access_course/);
-assert.match(websocketServer, /realtime subscription denied/);
-assert.match(websocketServer, /_emit_scoped_event/);
-assert.match(websocketServer, /COURSE_ACCESS_MAPPINGS/);
-assert.match(websocketServer, /if mapping_key not in COURSE_ACCESS_MAPPINGS/);
-assert.match(websocketServer, /mappings\s*=\s*\[\s*\(\s*"student_courses"\s*,\s*None\s*\)\s*\]/);
-assert.doesNotMatch(websocketServer, /course_pre_enroll/);
+assert.match(websocketServer, /access\.identity\(state\.token_hash\)/);
+assert.match(websocketServer, /access\.course_access\(identity, course_id\)/);
+assert.match(websocketServer, /socketio\.emit\(event, payload, to=state\.sid\)/);
+const websocketAccess = read('ws_relay_access.py');
+assert.match(websocketAccess, /STUDENT_GRANTS = .*'student_courses'.*'user_courses'.*'enrollments'/);
+assert.match(websocketAccess, /u\.auth_session_version = lease\.session_version/);
+assert.doesNotMatch(websocketAccess, /course_pre_enroll/);
 
 const managerCourses = read('public/api/manager/courses.php');
 assert.match(managerCourses, /\$isAdmin\s*=\s*user_role_at_least\(\$pdo,\s*\$user,\s*'admin'\)/);

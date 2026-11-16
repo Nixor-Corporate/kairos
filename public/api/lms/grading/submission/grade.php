@@ -250,6 +250,7 @@ try {
             'entity_type' => 'grade',
             'entity_id' => $gradeId,
             'course_id' => (int)$s['course_id'],
+            'student_user_id' => (int)$s['student_user_id'],
         ]);
     }
 

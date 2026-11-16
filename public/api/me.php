@@ -2,6 +2,9 @@
 declare(strict_types=1);
 
 require_once __DIR__.'/bootstrap.php';
+require_once dirname(__DIR__, 2) . '/src/realtime_session.php';
+
+header('Cache-Control: private, no-store');
 
 if (empty($_SESSION['user'])) {
   json_out([]);
@@ -27,14 +30,18 @@ if (!is_string($socketPath) || $socketPath === '') {
 
 $secret = env('WS_SHARED_SECRET', '');
 if ($secret !== '' && $publicUrl !== '' && !empty($user['user_id'])) {
-  $ts = time();
-  $uid = (int)$user['user_id'];
-  $raw = $uid . '|' . $ts;
-  $token = hash_hmac('sha256', $raw, $secret);
-  $wsInfo['ws_url'] = $publicUrl;
-  $wsInfo['token'] = $token . '.' . $ts . '.' . $uid;
-  $wsInfo['ts'] = $ts;
-  $wsInfo['socket_path'] = '/' . ltrim($socketPath, '/');
+  $ttl = max(30, min(600, (int)env('WS_TOKEN_TTL', '600')));
+  try {
+    $lease = kairos_realtime_lease(db(), (int)$user['user_id'], (int)$_SESSION['auth_session_version'], $ttl);
+    $wsInfo['token'] = $lease['token'];
+    $wsInfo['ws_url'] = $publicUrl;
+    $wsInfo['ts'] = $lease['issued_at'];
+    $wsInfo['expires_at'] = $lease['expires_at'];
+    $wsInfo['socket_path'] = '/' . ltrim($socketPath, '/');
+  } catch (PDOException $error) {
+    // Realtime is optional. The already authenticated REST identity remains usable.
+    error_log('[kairos] realtime lease issuance failed: ' . get_class($error));
+  }
 } else {
   $wsInfo['ws_url'] = $publicUrl !== '' ? $publicUrl : null;
 }

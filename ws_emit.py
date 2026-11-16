@@ -6,9 +6,15 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 DEFAULT_EMIT_URL = "http://127.0.0.1:8090/emit"
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def _load_payload(raw: str | None):
@@ -21,6 +27,11 @@ def _load_payload(raw: str | None):
 
 
 def send_event(url: str, secret: str, event: dict) -> int:
+    target = urllib.parse.urlsplit(url)
+    if (target.scheme != "http" or target.hostname not in {"127.0.0.1", "::1"}
+            or target.username is not None or target.password is not None
+            or target.path != "/emit" or target.query or target.fragment):
+        raise ValueError("WS_EMIT_URL must be a loopback HTTP /emit endpoint")
     data = json.dumps(event).encode()
     req = urllib.request.Request(
         url,
@@ -31,7 +42,8 @@ def send_event(url: str, secret: str, event: dict) -> int:
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+    with opener.open(req, timeout=10) as resp:
         resp.read()
         return resp.status
 
@@ -65,13 +77,13 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         status = send_event(args.url, secret, message)
-        print(f"sent {args.event} to {args.url} (status={status})")
+        print(f"sent relay event (status={status})")
         return 0
     except urllib.error.HTTPError as exc:  # pragma: no cover - CLI diagnostics
-        print(f"HTTP error {exc.code}: {exc.reason}", file=sys.stderr)
+        print(f"relay HTTP error (status={exc.code})", file=sys.stderr)
         return 1
     except Exception as exc:  # pragma: no cover - CLI diagnostics
-        print(f"failed to send event: {exc}", file=sys.stderr)
+        print(f"relay request failed ({type(exc).__name__})", file=sys.stderr)
         return 1
 
 

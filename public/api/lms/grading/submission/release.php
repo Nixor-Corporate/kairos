@@ -95,6 +95,7 @@ try {
         'entity_type' => 'grade',
         'entity_id' => (int)$g['grade_id'],
         'course_id' => (int)$g['course_id'],
+        'student_user_id' => (int)$g['student_user_id'],
     ]);
 
     $pdo->commit();
