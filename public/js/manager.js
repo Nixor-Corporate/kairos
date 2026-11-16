@@ -232,7 +232,43 @@ async function openProgressView() {
   }
   setBreadcrumbs(`Course #${activeCourseId} · Progress`);
   showView('viewProgress');
+  document.getElementById('downloadProgressExcel').onclick = downloadProgressWorkbook;
   await Promise.all([loadProgressSummary(), loadSignoffRequirements(activeCourseId)]);
+}
+
+async function downloadProgressWorkbook() {
+  const courseId = activeCourseId;
+  const courseName = activeCourseName || `Course #${courseId}`;
+  const button = document.getElementById('downloadProgressExcel');
+  const message = document.getElementById('progressExportMessage');
+  if (!courseId || button.disabled) return;
+  button.disabled = true;
+  message.textContent = `Preparing workbook for ${courseName}…`;
+  try {
+    const response = await fetch(`./api/manager/progress_export.php?course_id=${encodeURIComponent(courseId)}`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'Could not download the workbook. Check your course access and try again.');
+    }
+    if (!response.headers.get('Content-Type')?.startsWith('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) {
+      throw new Error('The server did not return a workbook.');
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `kairos-course-${courseId}-progress.xlsx`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    message.textContent = `Workbook for ${courseName} sent to your downloads.`;
+  } catch (err) {
+    message.textContent = err.message || 'Could not download the workbook.';
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function loadSignoffRequirements(courseId) {
