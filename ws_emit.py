@@ -39,7 +39,6 @@ def send_event(url: str, secret: str, event: dict) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--event", required=True, help="event name to emit")
-    parser.add_argument("--secret", required=True, help="shared secret")
     parser.add_argument("--course-id", type=int, default=None)
     parser.add_argument("--room-id", type=int, default=None)
     parser.add_argument("--ref-id", type=int, default=None)
@@ -51,6 +50,9 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
+    secret = os.environ.get("WS_SHARED_SECRET", "")
+    if not secret:
+        parser.error("WS_SHARED_SECRET must be set in the environment")
 
     payload = _load_payload(args.payload)
     message = {
@@ -62,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     try:
-        status = send_event(args.url, args.secret, message)
+        status = send_event(args.url, secret, message)
         print(f"sent {args.event} to {args.url} (status={status})")
         return 0
     except urllib.error.HTTPError as exc:  # pragma: no cover - CLI diagnostics
