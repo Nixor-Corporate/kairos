@@ -14,6 +14,8 @@ The branch implements the two approved capabilities. Managers and admins set cou
 
 ## Audit documents
 
+For the next review, see the [release-gate checklist](release-gates.md) and [follow-up findings and staging requirements](follow-up.md).
+
 | Deliverable | Document |
 | --- | --- |
 | Complete feedback analysis | [Feedback analysis](feedback.md) |
