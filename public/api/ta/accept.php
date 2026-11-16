@@ -37,21 +37,35 @@ if (!ta_has_course($pdo, (int)$ta['user_id'], $courseId)) {
     json_out(['error' => 'forbidden', 'message' => 'Course not assigned'], 403);
 }
 
-$waiting = $pdo->prepare('SELECT 1 FROM queue_entries WHERE queue_id = :qid AND user_id = :uid LIMIT 1');
-$waiting->execute([':qid' => $queueId, ':uid' => $studentId]);
-if (!$waiting->fetchColumn()) {
-    json_out(['error' => 'student not waiting in queue'], 409);
-}
-
-$current = ta_active_assignment($pdo, $queueId);
-if ($current && $current['student_user_id'] !== $studentId) {
-    json_out(['error' => 'queue busy', 'serving' => $current], 409);
-}
-
 $pdo->beginTransaction();
 try {
+    // All accepts for a queue serialize on its row before inspecting assignments.
+    $lock = $pdo->prepare('SELECT queue_id FROM queues WHERE queue_id = :qid FOR UPDATE');
+    $lock->execute([':qid' => $queueId]);
+    if (!$lock->fetchColumn()) {
+        $pdo->rollBack();
+        json_out(['error' => 'queue not found'], 404);
+    }
+    $current = ta_active_assignment($pdo, $queueId);
+    if ($current) {
+        $pdo->rollBack();
+        if ($current['student_user_id'] === $studentId && $current['ta_user_id'] === (int)$ta['user_id']) {
+            json_out([
+                'success' => true,
+                'assignment_id' => $current['ta_assignment_id'] ?? null,
+                'queue_id' => $queueId,
+                'student_user_id' => $studentId,
+                'ta_name' => $current['ta_name'],
+            ]);
+        }
+        json_out(['error' => 'queue busy', 'serving' => $current], 409);
+    }
     $del = $pdo->prepare('DELETE FROM queue_entries WHERE queue_id = :qid AND user_id = :uid');
     $del->execute([':qid' => $queueId, ':uid' => $studentId]);
+    if ($del->rowCount() !== 1) {
+        $pdo->rollBack();
+        json_out(['error' => 'student not waiting in queue'], 409);
+    }
 
     $ins = $pdo->prepare(
         'INSERT INTO ta_assignments (ta_user_id, student_user_id, queue_id, started_at)
