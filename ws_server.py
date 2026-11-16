@@ -283,7 +283,13 @@ def _emit_authorized(payload: Dict[str, Any], *, lms: bool = False) -> int:
                 if state.course_id is not None:
                     socketio.server.disconnect(state.sid, namespace="/")
                 continue
-            if _can_receive(state, staff, channel, event, details, target_id):
+            if (lms and not staff and event in ("quiz.updated", "assignment.updated")
+                    and details.get("status") == "draft" and details.get("unpublished") is True):
+                # Existing list listeners only need the event name and course to reload from REST.
+                hint = {key: payload[key] for key in ("event_name", "event_id", "course_id") if key in payload}
+                socketio.emit(event, hint, to=state.sid)
+                sent += 1
+            elif _can_receive(state, staff, channel, event, details, target_id):
                 socketio.emit(event, payload, to=state.sid)
                 sent += 1
     return sent

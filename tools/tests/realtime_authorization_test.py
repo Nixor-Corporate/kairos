@@ -160,6 +160,19 @@ def main():
                                    'audience': 'course_staff', 'status': 'draft'}, lms=True) == 1
     assert events(classroom) == ['announcement.created'] and not events(lms_owner) and not events(lms_peer)
 
+    for event_name in ('quiz.updated', 'assignment.updated'):
+        draft = {'event_name': event_name, 'event_id': 'unpublish-fixture', 'course_id': 111,
+                 'entity_id': 123, 'title': 'Private draft title', 'status': 'draft'}
+        assert relay._emit_authorized(draft, lms=True) == 1
+        assert events(classroom) == [event_name] and not events(lms_owner) and not events(lms_peer)
+
+        assert relay._emit_authorized({**draft, 'unpublished': True}, lms=True) == 3
+        assert classroom.get_received()[0]['args'][0]['title'] == draft['title']
+        for client in (lms_owner, lms_peer):
+            assert client.get_received()[0]['args'][0] == {
+                'event_name': event_name, 'event_id': draft['event_id'], 'course_id': 111,
+            }
+
     change('DELETE FROM enrollments WHERE user_id=102 AND course_id=111')
     try:
         assert emit() == 2

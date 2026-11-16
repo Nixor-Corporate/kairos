@@ -113,6 +113,12 @@ $maxFileMb = lms_clamp_max_file_mb(
 
 $pdo->beginTransaction();
 try {
+    $unpublished = false;
+    if ($status === 'draft') {
+        $prior = $pdo->prepare('SELECT status FROM lms_assignments WHERE assignment_id = ? AND course_id = ? FOR UPDATE');
+        $prior->execute([$id, $courseId]);
+        $unpublished = $prior->fetchColumn() === 'published';
+    }
     $pdo->prepare(
         'UPDATE lms_assignments
          SET title = :title,
@@ -191,6 +197,7 @@ try {
         'course_id' => $courseId,
         'title' => $title,
         'status' => $status,
+        'unpublished' => $unpublished,
         'allowed_file_extensions' => $allowedFileExtensions,
         'max_file_mb' => $maxFileMb,
     ]);
