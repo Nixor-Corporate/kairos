@@ -848,12 +848,14 @@ async function createRoom() {
 
 async function loadRoster() {
   if (!activeCourseId) return;
+  const courseId = activeCourseId;
   const rosterEl = document.getElementById('courseRoster');
   if (!rosterEl) return;
   rosterEl.innerHTML = '<div class="muted">Loading roster…</div>';
   rosterEl.onclick = null;
   try {
-    const roster = await apiGet(`./api/manager/users_search.php?course_id=${encodeURIComponent(activeCourseId)}&roster=1`);
+    const roster = await apiGet(`./api/manager/users_search.php?course_id=${encodeURIComponent(courseId)}&roster=1`);
+    if (activeCourseId !== courseId) return;
     if (!Array.isArray(roster) || !roster.length) {
       rosterEl.innerHTML = '<div class="muted">No one enrolled yet.</div>';
       return;
@@ -875,13 +877,14 @@ async function loadRoster() {
       rosterEl.appendChild(row);
     });
     rosterEl.onclick = async (event) => {
+      if (activeCourseId !== courseId) return;
       const btn = event.target.closest('button[data-roster-remove]');
       if (btn) {
         const uid = Number(btn.getAttribute('data-roster-remove'));
         if (!confirm('Unenroll this user?')) return;
         try {
-          await apiPost('./api/manager/unenroll.php', { user_id: uid, course_id: activeCourseId });
-          await Promise.all([loadRoster(), rerunLastSearch()]);
+          await apiPost('./api/manager/unenroll.php', { user_id: uid, course_id: courseId });
+          if (activeCourseId === courseId) await Promise.all([loadRoster(), rerunLastSearch()]);
         } catch (err) {
           if (err?.status !== 403) {
             alert(err.message);
@@ -897,7 +900,7 @@ async function loadRoster() {
       await openProgressModal(uid);
     };
   } catch (err) {
-    if (err?.status === 403) {
+    if (activeCourseId !== courseId || err?.status === 403) {
       return;
     }
     rosterEl.innerHTML = `<div class="muted">Failed to load roster: ${escapeHtml(err.message)}</div>`;
@@ -905,6 +908,7 @@ async function loadRoster() {
 }
 
 async function searchUsers() {
+  const courseId = activeCourseId;
   if (!activeCourseId) return;
   const input = document.getElementById('userSearchInput');
   const term = (input.value || '').trim();
@@ -922,7 +926,8 @@ async function searchUsers() {
   resultsEl.innerHTML = '<div class="muted">Searching…</div>';
   resultsEl.onclick = null;
   try {
-    const results = await apiGet(`./api/manager/users_search.php?course_id=${encodeURIComponent(activeCourseId)}&q=${encodeURIComponent(term)}`);
+    const results = await apiGet(`./api/manager/users_search.php?course_id=${encodeURIComponent(courseId)}&q=${encodeURIComponent(term)}`);
+    if (activeCourseId !== courseId || lastSearchTerm !== term) return;
     if (!Array.isArray(results) || !results.length) {
       resultsEl.innerHTML = '<div class="muted">No results.</div>';
       return;
@@ -941,15 +946,16 @@ async function searchUsers() {
       resultsEl.appendChild(row);
     });
     resultsEl.onclick = async (event) => {
+      if (activeCourseId !== courseId) return;
       const btn = event.target.closest('button[data-search-action]');
       if (!btn) return;
       const uid = Number(btn.getAttribute('data-user-id'));
       const action = btn.getAttribute('data-search-action');
       try {
         if (action === 'enroll') {
-          await apiPost('./api/manager/enroll.php', { user_id: uid, course_id: activeCourseId });
+          await apiPost('./api/manager/enroll.php', { user_id: uid, course_id: courseId });
         }
-        await Promise.all([loadRoster(), rerunLastSearch()]);
+        if (activeCourseId === courseId) await Promise.all([loadRoster(), rerunLastSearch()]);
       } catch (err) {
         if (err?.status !== 403) {
           alert(err.message);
@@ -957,7 +963,7 @@ async function searchUsers() {
       }
     };
   } catch (err) {
-    if (err?.status === 403) {
+    if (activeCourseId !== courseId || lastSearchTerm !== term || err?.status === 403) {
       return;
     }
     resultsEl.innerHTML = `<div class="muted">Search failed: ${escapeHtml(err.message)}</div>`;

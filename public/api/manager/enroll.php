@@ -36,6 +36,8 @@ if (table_exists($pdo, 'users') && table_has_columns($pdo, 'users', ['user_id'])
 try {
     enroll_user_in_course($pdo, $targetId, $courseId);
     json_out(['success' => true, 'enrolled' => true]);
+} catch (DomainException $e) {
+    json_out(['error' => 'enrollment_conflict', 'message' => $e->getMessage()], 409);
 } catch (Throwable $e) {
     error_log('[kairos] manager.enroll failed: ' . get_class($e));
     json_out(['error' => 'server', 'message' => 'Internal server error'], 500);

@@ -3,17 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../_helpers.php';
 
-function table_exists(PDO $pdo, string $table): bool {
-    static $cache = [];
-    $key = strtolower($table);
-    if (array_key_exists($key, $cache)) {
-        return $cache[$key];
-    }
-    $st = $pdo->prepare('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table LIMIT 1');
-    $st->execute([':table' => $table]);
-    $cache[$key] = (bool)$st->fetchColumn();
-    return $cache[$key];
-}
+require_once dirname(__DIR__, 3) . '/src/student_course_membership.php';
 
 function table_columns(PDO $pdo, string $table): array {
     static $cache = [];
@@ -49,15 +39,6 @@ function manager_course_candidates(): array {
         ['table' => 'course_roles', 'user_col' => 'user_id', 'course_col' => 'course_id', 'role_col' => 'role', 'role_value' => 'manager'],
         ['table' => 'enrollments', 'user_col' => 'user_id', 'course_col' => 'course_id', 'role_col' => 'role', 'role_value' => 'manager'],
         ['table' => 'user_courses', 'user_col' => 'user_id', 'course_col' => 'course_id', 'role_col' => 'role', 'role_value' => 'manager'],
-    ];
-}
-
-function enrollment_candidates(): array {
-    return [
-        ['table' => 'enrollments', 'user_col' => 'user_id', 'course_col' => 'course_id'],
-        ['table' => 'student_courses', 'user_col' => 'user_id', 'course_col' => 'course_id'],
-        ['table' => 'course_users', 'user_col' => 'user_id', 'course_col' => 'course_id'],
-        ['table' => 'user_courses', 'user_col' => 'user_id', 'course_col' => 'course_id'],
     ];
 }
 
@@ -119,60 +100,27 @@ function assert_manager_controls_course(PDO $pdo, int $userId, int $courseId): v
     }
 }
 
-function resolve_enrollment_mapping(PDO $pdo): ?array {
-    static $cache = null;
-    if ($cache !== null) {
-        return $cache;
-    }
-    foreach (enrollment_candidates() as $map) {
-        $table = $map['table'];
-        if (!table_exists($pdo, $table)) {
-            continue;
-        }
-        if (!table_has_columns($pdo, $table, [$map['user_col'], $map['course_col']])) {
-            continue;
-        }
-        $cache = $map;
-        return $cache;
-    }
-    return null;
-}
-
-function course_enrollment_user_ids(PDO $pdo, int $courseId): array {
-    $map = resolve_enrollment_mapping($pdo);
-    if (!$map) {
-        return [];
-    }
-    $sql = "SELECT DISTINCT CAST(`{$map['user_col']}` AS UNSIGNED) AS uid FROM `{$map['table']}` WHERE `{$map['course_col']}` = :cid";
-    $st = $pdo->prepare($sql);
-    $st->execute([':cid' => $courseId]);
-    $ids = [];
-    foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $uid) {
-        $ids[] = (int)$uid;
-    }
-    return $ids;
-}
-
 function enroll_user_in_course(PDO $pdo, int $userId, int $courseId): void {
-    $map = resolve_enrollment_mapping($pdo);
-    if (!$map) {
-        json_out(['error' => 'unsupported', 'message' => 'No enrollment table found'], 500);
+    if (in_array($courseId, rbac_student_course_ids($pdo, $userId, true), true)) {
+        return;
     }
-    $sql = "INSERT INTO `{$map['table']}` (`{$map['course_col']}`, `{$map['user_col']}`) VALUES (:cid, :uid)
-            ON DUPLICATE KEY UPDATE `{$map['user_col']}` = `{$map['user_col']}`";
-    $st = $pdo->prepare($sql);
-    $st->execute([':cid' => $courseId, ':uid' => $userId]);
-}
+    if (rbac_table_has_columns($pdo, 'student_courses', ['course_id', 'user_id'])) {
+        require_once dirname(__DIR__) . '/lms/_enrollment.php';
+        lms_insert_student_enrollment($pdo, $courseId, $userId, 'manager');
+        return;
+    }
 
-function unenroll_user_from_course(PDO $pdo, int $userId, int $courseId): bool {
-    $map = resolve_enrollment_mapping($pdo);
-    if (!$map) {
-        json_out(['error' => 'unsupported', 'message' => 'No enrollment table found'], 500);
+    // Compatibility for installations with only the older, role-aware tables.
+    $available = student_course_grant_mappings($pdo);
+    $map = $available[0];
+    $sql = "INSERT INTO {$map['table']} ({$map['course_col']}, {$map['user_col']}, {$map['role_col']})
+            VALUES (?, ?, 'student')
+            ON DUPLICATE KEY UPDATE {$map['user_col']} = {$map['user_col']}";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$courseId, $userId]);
+    if (!in_array($courseId, rbac_student_course_ids($pdo, $userId, true), true)) {
+        throw new DomainException('The existing staff record cannot store a separate student enrollment.');
     }
-    $sql = "DELETE FROM `{$map['table']}` WHERE `{$map['course_col']}` = :cid AND `{$map['user_col']}` = :uid";
-    $st = $pdo->prepare($sql);
-    $st->execute([':cid' => $courseId, ':uid' => $userId]);
-    return $st->rowCount() > 0;
 }
 
 function room_course_id(PDO $pdo, int $roomId): ?int {
@@ -292,14 +240,10 @@ function delete_room_and_dependents(PDO $pdo, int $roomId): bool {
 }
 
 function users_for_course(PDO $pdo, int $courseId): array {
-    $ids = course_enrollment_user_ids($pdo, $courseId);
-    if (!$ids) {
-        return [];
-    }
-    $placeholders = implode(',', array_fill(0, count($ids), '?'));
-    $sql = 'SELECT user_id, name, email FROM users WHERE user_id IN ('.$placeholders.') ORDER BY name';
+    [$roster, $args] = course_student_roster_query($pdo, $courseId);
+    $sql = "SELECT u.user_id, u.name, u.email FROM users u JOIN ($roster) e ON e.user_id = u.user_id ORDER BY u.name";
     $st = $pdo->prepare($sql);
-    $st->execute($ids);
+    $st->execute($args);
     $rows = [];
     while ($row = $st->fetch(PDO::FETCH_ASSOC)) {
         $rows[] = [

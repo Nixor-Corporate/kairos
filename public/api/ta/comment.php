@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__.'/common.php';
+require_once dirname(__DIR__, 3) . '/src/rbac.php';
 [$pdo, $user] = require_ta_user();
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
@@ -24,7 +25,7 @@ if ($studentId <= 0 || $courseId <= 0 || $text === '') {
 if (!ta_has_course($pdo, (int)$user['user_id'], $courseId)) {
     json_out(['error' => 'forbidden'], 403);
 }
-if (!ta_student_in_course($pdo, $studentId, $courseId)) {
+if (!in_array($courseId, rbac_student_course_ids($pdo, $studentId), true)) {
     json_out(['error' => 'student_not_found'], 404);
 }
 

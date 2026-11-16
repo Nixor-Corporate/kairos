@@ -26,7 +26,7 @@ if ($targetId <= 0 || $courseId <= 0) {
 assert_manager_controls_course($pdo, $userId, $courseId);
 
 try {
-    $removed = unenroll_user_from_course($pdo, $targetId, $courseId);
+    $removed = remove_student_course_grants($pdo, $targetId, $courseId);
     json_out(['success' => true, 'removed' => $removed]);
 } catch (Throwable $e) {
     error_log('[kairos] manager.unenroll failed: ' . get_class($e));

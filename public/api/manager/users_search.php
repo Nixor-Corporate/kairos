@@ -55,29 +55,24 @@ if ($q === '') {
 }
 
 $isEmail        = filter_var($q, FILTER_VALIDATE_EMAIL) !== false;
-$params         = [];
-$enrollmentMap  = $courseId > 0 ? resolve_enrollment_mapping($pdo) : null;
-$hasEnrollment  = $courseId > 0 && $enrollmentMap;
+$params = [];
 $enrollmentJoin = '';
 $enrollmentWhere = '';
-$limit          = 25;
-
-if ($hasEnrollment) {
-    $enrollmentJoin = " LEFT JOIN `{$enrollmentMap['table']}` e ON e.`{$enrollmentMap['user_col']}` = u.user_id AND e.`{$enrollmentMap['course_col']}` = :cid";
-    $enrollmentWhere = ' AND e.`' . $enrollmentMap['user_col'] . '` IS NULL';
-    $params[':cid'] = $courseId;
-} elseif ($courseId > 0) {
-    $limit = 100;
+$limit = 25;
+if ($courseId > 0) {
+    [$roster, $params] = course_student_roster_query($pdo, $courseId);
+    $enrollmentJoin = " LEFT JOIN ($roster) e ON e.user_id = u.user_id";
+    $enrollmentWhere = ' AND e.user_id IS NULL';
 }
 
 if ($isEmail) {
     $sql          = 'SELECT u.user_id, u.name, u.email
                      FROM users u'
                     . $enrollmentJoin .
-                    ' WHERE LOWER(u.email) = LOWER(:email)'
+                    ' WHERE LOWER(u.email) = LOWER(?)'
                     . $enrollmentWhere .
                     ' LIMIT ' . (int)$limit;
-    $params[':email'] = $q;
+    $params[] = $q;
 } else {
     if (strlen($q) < 2) {
         json_out([]);
@@ -87,36 +82,25 @@ if ($isEmail) {
     $sql             = 'SELECT u.user_id, u.name, u.email
                         FROM users u'
                         . $enrollmentJoin .
-                        ' WHERE LOWER(u.name) LIKE :term'
+                        ' WHERE LOWER(u.name) LIKE ?'
                         . $enrollmentWhere .
                         ' ORDER BY u.name
                         LIMIT ' . (int)$limit;
-    $params[':term'] = $term;
+    $params[] = $term;
 }
 
 $st = $pdo->prepare($sql);
 $st->execute($params);
 $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-$enrolled = [];
-if ($courseId > 0 && !$hasEnrollment) {
-    foreach (course_enrollment_user_ids($pdo, $courseId) as $uid) {
-        $enrolled[$uid] = true;
-    }
-}
-
 $out = [];
 foreach ($rows as $row) {
     $uid = isset($row['user_id']) ? (int)$row['user_id'] : 0;
-    if ($courseId > 0 && !$hasEnrollment && !empty($enrolled[$uid])) {
-        continue;
-    }
-    $isEnrolled = $courseId > 0 && ($hasEnrollment ? false : !empty($enrolled[$uid]));
     $out[] = [
         'user_id'  => $uid,
         'name'     => $row['name'] ?? '',
         'email'    => $row['email'] ?? '',
-        'enrolled' => $courseId > 0 ? $isEnrolled : null,
+        'enrolled' => $courseId > 0 ? false : null,
     ];
 }
 

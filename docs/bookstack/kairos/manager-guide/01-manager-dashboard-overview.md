@@ -12,6 +12,8 @@ Use the Manager area to manage assigned courses, rooms, enrollment, progress, le
 4. Use **Student progress** for roster progress.
 5. Open the course itself for modules, assignments, quizzes, grading, and analytics.
 
+**Enrollment** lists students enrolled in that course. Removing a student here removes their student enrollment for the selected course. Manage staff assignments separately.
+
 ## Set sign-off requirements
 
 1. In **Student progress**, expand **Sign-off requirements**.
