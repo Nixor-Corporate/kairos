@@ -1,5 +1,7 @@
 # Test and verification report
 
+This report records the original audit runs. The [final release handoff](final-release.md#verification-and-staging) records the latest suite totals, fixture commands and staged acceptance criteria.
+
 ## Environment and commands
 
 All writes and login tests used a separate, loopback-only MariaDB 10.11.19 database with synthetic accounts and academic data. The application ran with PHP 8.4.27. Frontend checks used Node 26 and headless Chrome. Relay checks used Python 3.11. Downloads were matched against published PHP, MariaDB, Composer or PyPI digests. Historical malicious files were read as inert Git text or metadata.

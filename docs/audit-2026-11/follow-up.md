@@ -1,5 +1,7 @@
 # Follow-up release review
 
+This records the earlier follow-up through `70dd4ee`. For the approved task overrides, retained historical export, recent queue fixes and updated release evidence, see the [final release handoff](final-release.md).
+
 The review branch is for staging and code review. The [release gates](release-gates.md) remain open. SEC-01 requires containment, rotation and a clean build comparison. SEC-04 requires evidence of effective default-branch protection. SEC-05 requires an HTTPS redirect trace and real browser session evidence at the chosen canonical route. Earlier observations remain the basis for these gates. Hosting and GitHub settings were outside this change.
 
 ## Existing functionality

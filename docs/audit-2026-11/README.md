@@ -10,11 +10,11 @@ The six known malicious files are absent at all inspected branch and tag tips. T
 
 All 29 relevant feedback responses were retrieved. Ten of 23 students rarely or never received serving notifications. Nine rated queue joining and progress tracking 1–2. Five of six TAs rated dashboard navigation 1–2, and all six rated the progress dropdowns 4–5. Preserve the familiar task status control while improving authority, error handling, serving recovery, and enrollment consistency.
 
-The branch implements the two approved capabilities. Managers and admins set course-wide sign-off requirements and export the selected course's current roster and academic progress. The branch also closes legacy student-side progress writes, serializes queue accepts, corrects the manager progress roster, improves task selection consistency, and updates advisory-affected dependencies. Hosting and account containment and deployment require separate operational action.
+The branch implements course sign-off defaults with independent task overrides and a one-course workbook covering current students and retained academic history. It also closes legacy student-side progress writes, serializes queue accepts, restores serving state from REST, corrects the manager roster, and updates advisory-affected dependencies. Hosting, incident containment and staging still block release.
 
 ## Audit documents
 
-For the next review, see the [release-gate checklist](release-gates.md) and [follow-up findings and staging requirements](follow-up.md).
+Start with the [final release handoff](final-release.md), [release-gate checklist](release-gates.md) and [follow-up findings](follow-up.md).
 
 | Deliverable | Document |
 | --- | --- |
