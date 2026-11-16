@@ -232,7 +232,122 @@ async function openProgressView() {
   }
   setBreadcrumbs(`Course #${activeCourseId} · Progress`);
   showView('viewProgress');
-  await loadProgressSummary();
+  await Promise.all([loadProgressSummary(), loadSignoffRequirements(activeCourseId)]);
+}
+
+async function loadSignoffRequirements(courseId) {
+  const form = document.getElementById('managerSignoffForm');
+  const status = document.getElementById('managerSignoffMessage');
+  const list = document.getElementById('managerRatingOptions');
+  const rating = document.getElementById('managerRatingRequired');
+  const comment = document.getElementById('managerCommentRequired');
+  const add = document.getElementById('managerAddRating');
+  const save = document.getElementById('managerSaveSignoff');
+  if (!form) return;
+  const request = Symbol();
+  form.signoffRequest = request;
+  const isCurrent = () => activeCourseId === courseId && form.signoffRequest === request;
+  form.hidden = true;
+  status.textContent = 'Loading requirements…';
+  let policy;
+  const refreshAddButton = () => { add.disabled = list.children.length >= 50; };
+  const appendChoice = (option = { id: null, label: '', active: true }) => {
+    const item = document.createElement('li');
+    item.className = 'k-toolbar';
+    if (option.id) item.dataset.id = option.id;
+    const label = document.createElement('input');
+    label.className = 'input';
+    label.setAttribute('aria-label', 'Rating label');
+    label.required = true;
+    label.maxLength = 120;
+    label.value = option.label;
+    const activeLabel = document.createElement('label');
+    const active = document.createElement('input');
+    active.type = 'checkbox';
+    active.checked = option.active;
+    activeLabel.append(active, ' Active');
+    item.append(label, activeLabel);
+    for (const [title, move] of [
+      ['Move up', () => { if (item.previousElementSibling) list.insertBefore(item, item.previousElementSibling); }],
+      ['Move down', () => { if (item.nextElementSibling) list.insertBefore(item.nextElementSibling, item); }],
+    ]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-secondary btn-sm';
+      button.textContent = title;
+      button.setAttribute('aria-label', `${title} rating choice`);
+      button.onclick = () => { move(); button.focus(); };
+      item.append(button);
+    }
+    if (!option.id) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn btn-ghost btn-sm';
+      remove.textContent = 'Remove';
+      remove.onclick = () => { item.remove(); refreshAddButton(); add.focus(); };
+      item.append(remove);
+    }
+    list.append(item);
+    refreshAddButton();
+    return label;
+  };
+  const applyPolicy = (data) => {
+    policy = data;
+    rating.checked = data.rating_required;
+    comment.checked = data.comment_required;
+    list.replaceChildren();
+    data.options.forEach(appendChoice);
+    refreshAddButton();
+  };
+  try {
+    const response = await fetch(`./api/manager/signoff_policy.php?course_id=${encodeURIComponent(courseId)}`, { cache: 'no-store' });
+    if (!isCurrent()) return;
+    if (!response.ok) throw new Error('Could not load sign-off requirements.');
+    const data = await response.json();
+    if (!isCurrent()) return;
+    applyPolicy(data);
+    form.hidden = false;
+    status.textContent = '';
+    add.onclick = () => appendChoice().focus();
+  } catch (err) {
+    if (isCurrent()) status.textContent = 'Could not load sign-off requirements. Reopen Student progress to retry.';
+    return;
+  }
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    if (save.disabled || !isCurrent()) return;
+    const options = [...list.children].map(item => ({
+      id: item.dataset.id || null,
+      label: item.querySelector('input[type=text], input:not([type])').value,
+      active: item.querySelector('input[type=checkbox]').checked,
+    }));
+    const fields = [...form.elements];
+    fields.forEach(field => { field.disabled = true; });
+    status.textContent = 'Saving requirements…';
+    try {
+      const response = await fetch('./api/manager/signoff_policy.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          course_id: courseId,
+          revision: policy.revision,
+          rating_required: rating.checked,
+          comment_required: comment.checked,
+          options,
+        }),
+      });
+      const data = await response.json();
+      if (!isCurrent()) return;
+      if (!response.ok) throw new Error(data.message || 'Could not save sign-off requirements.');
+      applyPolicy(data);
+      status.textContent = 'Requirements saved.';
+    } catch (err) {
+      if (isCurrent()) status.textContent = err.message;
+    } finally {
+      fields.forEach(field => { field.disabled = false; });
+      if (isCurrent()) refreshAddButton();
+    }
+  };
 }
 
 async function loadProgressSummary() {
@@ -290,18 +405,21 @@ async function loadProgressSummary() {
 
 async function openProgressModal(userId) {
   if (!activeCourseId || !userId) return;
+  const courseId = activeCourseId;
   const modal = document.getElementById('progressModal');
   const title = document.getElementById('progressModalTitle');
   const meta = document.getElementById('progressModalMeta');
   const body = document.getElementById('progressModalBody');
   if (!modal || !title || !meta || !body) return;
 
-  modal.classList.remove('hidden');
-  modal.setAttribute('aria-hidden', 'false');
+  if (!modal.open) modal.showModal();
+  const request = Symbol();
+  modal.progressRequest = request;
   body.innerHTML = '<div class="muted">Loading progress details…</div>';
 
   try {
-    const data = await apiGet(`./api/manager/progress.php?course_id=${encodeURIComponent(activeCourseId)}&user_id=${encodeURIComponent(userId)}`);
+    const data = await apiGet(`./api/manager/progress.php?course_id=${encodeURIComponent(courseId)}&user_id=${encodeURIComponent(userId)}`);
+    if (!modal.open || modal.progressRequest !== request || courseId !== activeCourseId) return;
     title.textContent = data?.student?.name
       ? `${data.student.name} — progress`
       : 'Student progress';
@@ -313,11 +431,7 @@ async function openProgressModal(userId) {
     const detailsByCategory = data?.detailsByCategory || {};
     const statuses = data?.userStatuses || {};
     const comments = Array.isArray(data?.comments) ? data.comments : [];
-
-    if (!categories.length) {
-      body.innerHTML = '<div class="muted">No progress categories configured for this course.</div>';
-      return;
-    }
+    const history = Array.isArray(data?.signoffHistory) ? data.signoffHistory : [];
 
     const categoryHtml = categories.map((cat) => {
       const details = Array.isArray(detailsByCategory?.[cat.category_id]) ? detailsByCategory[cat.category_id] : [];
@@ -354,10 +468,20 @@ async function openProgressModal(userId) {
       : '<div class="muted">No comments yet.</div>';
 
     body.innerHTML = `
-      ${categoryHtml}
+      ${categoryHtml || '<div class="muted">No progress categories configured for this course.</div>'}
       <div>
         <h4 class="title-reset">TA comments</h4>
         ${commentHtml}
+      </div>
+      <div>
+        <h4 class="title-reset">Recent sign-offs</h4>
+        ${history.length ? history.map(event => `
+          <div class="progress-comment">
+            <div>${escapeHtml(event.task_name || `Task #${event.detail_id}`)} · ${escapeHtml(event.status)}</div>
+            <div class="muted small">${escapeHtml(event.actor_name || 'Staff')} · ${escapeHtml(formatTimestamp(event.created_at))}</div>
+            ${event.rating_label ? `<div>Rating: ${escapeHtml(event.rating_label)}</div>` : ''}
+            ${event.signoff_comment ? `<div>${escapeHtml(event.signoff_comment)}</div>` : ''}
+          </div>`).join('') : '<div class="muted">No sign-off history yet.</div>'}
       </div>
     `;
   } catch (err) {
@@ -368,8 +492,7 @@ async function openProgressModal(userId) {
 function closeProgressModal() {
   const modal = document.getElementById('progressModal');
   if (!modal) return;
-  modal.classList.add('hidden');
-  modal.setAttribute('aria-hidden', 'true');
+  if (modal.open) modal.close();
 }
 
 function formatTimestamp(value) {

@@ -99,16 +99,36 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   const progressArea = document.getElementById('taProgressArea');
   if (progressArea) {
-    progressArea.addEventListener('change', (e) => {
+    progressArea.addEventListener('change', async (e) => {
       const select = e.target.closest('select[data-detail]');
       if (!select) return;
       const detailId = parseInt(select.dataset.detail, 10);
       if (!detailId || !taState.selectedStudent) return;
-      const status = select.value;
+      const status = select.value.toLowerCase();
+      const previous = select.dataset.savedStatus;
+      if (select.value === previous) return;
+      const courseId = taState.selectedCourse;
+      const studentId = taState.selectedStudent;
+      const policy = taState.signoffPolicy;
       select.disabled = true;
-      updateProgress(detailId, status).finally(() => {
+      select.value = previous;
+      try {
+        if (status === 'completed' && (policy?.rating_required || policy?.comment_required)) {
+          await confirmSignoff(select, detailId, studentId, status, previous, policy);
+        } else {
+          await saveProgress(select, detailId, studentId, status, previous, {
+            policy_revision: policy?.revision,
+          });
+        }
+      } catch (err) {
+        if (taState.selectedStudent === studentId && taState.selectedCourse === courseId) {
+          showToast(err.body?.message || 'Could not update progress. Try again.');
+          if (err.status === 409) await loadStudentProgress(studentId);
+        }
+      } finally {
         select.disabled = false;
-      });
+        if (select.isConnected && document.activeElement === document.body) select.focus();
+      }
     });
   }
   const commentForm = document.getElementById('taCommentForm');
@@ -921,12 +941,21 @@ async function handleCallAgain(queueId, button) {
 
 async function loadStudentProgress(userId) {
   if (!taState.selectedCourse || !userId) return;
+  const courseId = taState.selectedCourse;
+  const request = Symbol();
+  taState.progressRequest = request;
+  const area = document.getElementById('taProgressArea');
+  if (area?.dataset.student !== String(userId) || area?.dataset.course !== String(courseId)) {
+    document.getElementById('taStudentPanel')?.classList.add('hidden');
+  }
   try {
-    const data = await apiGet(`./api/ta/student_progress.php?course_id=${encodeURIComponent(taState.selectedCourse)}&user_id=${encodeURIComponent(userId)}`);
+    const data = await apiGet(`./api/ta/student_progress.php?course_id=${encodeURIComponent(courseId)}&user_id=${encodeURIComponent(userId)}`);
+    if (taState.progressRequest !== request || taState.selectedStudent !== userId || taState.selectedCourse !== courseId) return;
     renderStudentPanel(data, userId);
   } catch (err) {
-    console.error('progress failed', err);
-    alert('Failed to load student progress.');
+    if (taState.progressRequest === request && taState.selectedStudent === userId) {
+      showToast('Could not load student progress. Select the student to retry.');
+    }
   }
 }
 
@@ -945,6 +974,12 @@ function renderStudentPanel(data, userId) {
   if (courseLabel) courseLabel.textContent = taState.selectedCourse ? `Course #${taState.selectedCourse}` : '';
 
   taState.statusOptions = Array.isArray(data?.statuses) ? data.statuses : [];
+  taState.signoffPolicy = data?.signoffPolicy;
+  const area = document.getElementById('taProgressArea');
+  if (area) {
+    area.dataset.student = String(userId);
+    area.dataset.course = String(taState.selectedCourse);
+  }
   renderProgressList(data);
   renderCommentList(data?.comments || []);
 }
@@ -980,6 +1015,7 @@ function renderProgressList(data) {
       name.textContent = detail.name;
       const select = document.createElement('select');
       select.dataset.detail = detail.detail_id;
+      select.setAttribute('aria-label', `Progress for ${detail.name}`);
       options.forEach((optName) => {
         const opt = document.createElement('option');
         opt.value = optName;
@@ -989,9 +1025,8 @@ function renderProgressList(data) {
         }
         select.appendChild(opt);
       });
-      if (statuses && !options.includes(statuses[detail.detail_id])) {
-        select.value = statuses[detail.detail_id];
-      }
+      select.value = options.includes(statuses[detail.detail_id]) ? statuses[detail.detail_id] : 'None';
+      select.dataset.savedStatus = select.value;
       row.appendChild(name);
       row.appendChild(select);
       group.appendChild(row);
@@ -1055,17 +1090,82 @@ function clearStudentPanel() {
   if (progress) progress.innerHTML = '';
 }
 
-async function updateProgress(detailId, status) {
-  try {
-    await apiPost('./api/ta/update_progress.php', {
-      user_id: parseInt(taState.selectedStudent, 10),
-      detail_id: detailId,
-      status,
-    });
-  } catch (err) {
-    console.error('update progress failed', err);
-    alert('Failed to update progress.');
-  }
+async function saveProgress(select, detailId, studentId, status, previous, fields) {
+  const response = await apiPost('./api/ta/update_progress.php', {
+    user_id: studentId,
+    detail_id: detailId,
+    status,
+    expected_status: previous.toLowerCase(),
+    ...fields,
+  });
+  select.value = response.status;
+  select.dataset.savedStatus = response.status;
+  showToast('Progress saved.');
+}
+
+function confirmSignoff(select, detailId, studentId, status, previous, policy) {
+  const dialog = document.getElementById('taSignoffDialog');
+  const form = document.getElementById('taSignoffForm');
+  const rating = document.getElementById('taSignoffRating');
+  const comment = document.getElementById('taSignoffComment');
+  const error = document.getElementById('taSignoffError');
+  const save = document.getElementById('taSignoffSave');
+  const cancel = document.getElementById('taSignoffCancel');
+  const courseId = taState.selectedCourse;
+  form.reset();
+  error.textContent = '';
+  document.getElementById('taSignoffTask').textContent = select.closest('.ta-progress-item').querySelector('.detail-name').textContent;
+  document.getElementById('taSignoffRatingField').hidden = !policy.options.length;
+  document.getElementById('taSignoffRatingLabel').textContent = policy.rating_required ? 'Rating (required)' : 'Rating (optional)';
+  document.getElementById('taSignoffCommentLabel').textContent = policy.comment_required ? 'Comment (required)' : 'Comment (optional)';
+  rating.replaceChildren(new Option('Select a rating', ''), ...policy.options.map(option => new Option(option.label, option.id)));
+  rating.required = policy.rating_required;
+  comment.required = policy.comment_required;
+  cancel.onclick = () => dialog.close();
+  dialog.oncancel = (event) => {
+    if (save.disabled) event.preventDefault();
+  };
+  return new Promise((resolve, reject) => {
+    let conflict;
+    dialog.onclose = () => {
+      form.onsubmit = null;
+      if (conflict) reject(conflict);
+      else resolve();
+    };
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      if (save.disabled) return;
+      if (taState.selectedStudent !== studentId || taState.selectedCourse !== courseId) {
+        dialog.close();
+        return;
+      }
+      if (policy.comment_required && !comment.value.trim()) {
+        error.textContent = 'Enter a comment to complete this task.';
+        comment.focus();
+        return;
+      }
+      save.disabled = cancel.disabled = true;
+      error.textContent = 'Saving…';
+      try {
+        await saveProgress(select, detailId, studentId, status, previous, {
+          rating_option_id: rating.value || null,
+          comment: comment.value,
+          policy_revision: policy.revision,
+        });
+        dialog.close();
+      } catch (err) {
+        if (err.status === 409) {
+          conflict = err;
+          dialog.close();
+        } else {
+          error.textContent = err.body?.message || 'Could not save the sign-off. Try again.';
+        }
+      } finally {
+        save.disabled = cancel.disabled = false;
+      }
+    };
+    dialog.showModal();
+  });
 }
 
 function highlightSelectedStudent() {

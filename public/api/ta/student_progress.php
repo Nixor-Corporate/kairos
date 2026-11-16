@@ -2,6 +2,8 @@
 declare(strict_types=1);
 
 require_once __DIR__.'/common.php';
+require_once dirname(__DIR__, 3) . '/src/rbac.php';
+require_once dirname(__DIR__, 3) . '/src/signoff.php';
 [$pdo, $user] = require_ta_user();
 
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -14,10 +16,10 @@ if ($courseId <= 0 || $studentId <= 0) {
     json_out(['error' => 'course_id and user_id required'], 400);
 }
 
-if (!ta_has_course($pdo, (int)$user['user_id'], $courseId)) {
+if (!rbac_can($pdo, $user, 'update_student_progress', $courseId)) {
     json_out(['error' => 'forbidden'], 403);
 }
-if (!ta_student_in_course($pdo, $studentId, $courseId)) {
+if (!in_array($courseId, rbac_student_course_ids($pdo, $studentId), true)) {
     json_out(['error' => 'student_not_found'], 404);
 }
 
@@ -88,7 +90,10 @@ if (table_exists($pdo, 'ta_comments')) {
     }
 }
 
+$policy = signoff_policy($pdo, $courseId);
+$policy['options'] = array_values(array_filter($policy['options'], static fn(array $option): bool => $option['active']));
 json_out([
+    'signoffPolicy'     => $policy,
     'categories'        => $categories,
     'detailsByCategory' => $detailsByCat,
     'userStatuses'      => (object)$statuses,

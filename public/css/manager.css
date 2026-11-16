@@ -340,3 +340,46 @@
   padding-bottom: 0;
   border-top: none;
 }
+.signoff-settings summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.signoff-settings label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  min-height: 44px;
+}
+
+.signoff-settings input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.signoff-choices {
+  padding-inline-start: var(--space-5);
+}
+
+.signoff-choices li {
+  margin-block: var(--space-2);
+}
+
+.signoff-choices .input {
+  flex: 1 1 12rem;
+  width: auto;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .signoff-settings .btn {
+    min-height: 44px;
+  }
+
+  .signoff-choices .input {
+    flex-basis: 100%;
+  }
+}
