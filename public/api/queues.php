@@ -232,6 +232,7 @@ try {
                     'occupants'      => $waitingStudents,
                     'students'       => $students,
                     'serving'        => $serving,
+                    'avg_handle_minutes' => $queueId > 0 ? queue_avg_handle_minutes($pdo, $queueId) : null,
                     'updated_at'     => $updatedAt,
                 ];
             }, $rows);

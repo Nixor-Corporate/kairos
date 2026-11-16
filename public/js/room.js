@@ -7,7 +7,6 @@ const roomCard = document.getElementById('roomCard');
 const toastStack = document.getElementById('toastStack');
 let serveAudio;
 
-const AVERAGE_SERVICE_MINUTES = 5;
 const SERVED_SOUND_SRC = new URL('./sounds/served-notification.mp3', window.location.href).href;
 
 const state = {
@@ -209,6 +208,7 @@ function normalizeQueue(raw) {
     students,
     occupants,
     occupantCount,
+    averageHandleMinutes: Number(raw?.avg_handle_minutes),
     serving,
     updatedAt,
   };
@@ -536,22 +536,23 @@ function getStudentQueuePosition(queue, studentId) {
 }
 
 function getEstimatedWaitMinutes(queue, studentId) {
-  if (!queue) return null;
+  if (!queue || !Number.isFinite(queue.averageHandleMinutes) || queue.averageHandleMinutes <= 0) return null;
   const waitingCount = getWaitingCount(queue);
   const position = getStudentQueuePosition(queue, studentId);
   if (position != null) {
-    return position * AVERAGE_SERVICE_MINUTES;
+    return position * queue.averageHandleMinutes;
   }
-  if (waitingCount <= 0) {
+  if (waitingCount <= 0 && !queue.serving) {
     return 0;
   }
-  return (waitingCount + 1) * AVERAGE_SERVICE_MINUTES;
+  return (waitingCount + 1) * queue.averageHandleMinutes;
 }
 
 function formatEstimatedWait(queue, studentId) {
+  if (queue?.serving?.student_user_id === studentId) return '';
   const minutes = getEstimatedWaitMinutes(queue, studentId);
-  if (minutes == null) return '';
-  if (minutes <= 0) return 'Estimated wait: ~0–5 minutes';
+  if (minutes == null) return 'Wait estimate unavailable';
+  if (minutes <= 0) return '';
   const rounded = Math.max(1, Math.round(minutes));
   return `Estimated wait: ~${rounded} minute${rounded === 1 ? '' : 's'}`;
 }

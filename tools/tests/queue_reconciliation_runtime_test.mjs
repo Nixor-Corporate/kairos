@@ -47,6 +47,9 @@ await room.run('refreshVisibleRoom(); state.refreshPromise');
 assert.equal(room.run('state.currentQueueIdInRoom'), null, 'finished service clears the room membership');
 await room.run('reloadQueuesFromServer()');
 assert.equal(room.run('alerts.length'), 2, 'new serving assignment alerts again');
+assert.equal(room.run('formatEstimatedWait(normalizeQueue(waiting), 17)'), 'Wait estimate unavailable');
+assert.equal(room.run("formatEstimatedWait(normalizeQueue({...waiting, avg_handle_minutes: 6}), 17)"), 'Estimated wait: ~6 minutes');
+assert.equal(room.run('formatEstimatedWait(normalizeQueue(serving), 17)'), '');
 
 const session = page('public/js/room.js', { fetch: async () => ({ ok: false, status: 503 }) });
 await assert.rejects(session.run('ensureLoggedIn()'), error => error.status === 503);

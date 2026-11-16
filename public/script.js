@@ -1387,10 +1387,10 @@ async function refreshQueueMeta(queueId) {
       }
 
       if (etaEl) {
-        if (eta > 0) {
+        if (eta > 0 && Number(data?.avg_handle_minutes) > 0) {
           etaEl.textContent = `ETA ~ ${eta} min`;
         } else {
-          etaEl.textContent = 'ETA ~ —';
+          etaEl.textContent = 'Wait estimate unavailable';
         }
       }
 

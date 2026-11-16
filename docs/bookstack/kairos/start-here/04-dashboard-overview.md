@@ -28,4 +28,6 @@ Open a room to join or leave a waiting queue. When a TA starts serving you, the 
 
 After service starts, ask the TA to use **Stop Serving** when you are finished.
 
+Wait estimates appear when the queue has measured handling times. The waiting list remains available when an estimate is unavailable.
+
 ![A room queue during an active TA session](../screenshots/room-serving.png)
