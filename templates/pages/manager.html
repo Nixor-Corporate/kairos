@@ -249,9 +249,68 @@
             </div>
           </div>
           <section class="k-card">
+            <div class="k-card__body">
+              <details id="managerSignoffSettings" class="signoff-settings">
+                <summary>Sign-off requirements</summary>
+                <form id="managerSignoffForm" class="k-panel-gap">
+                  <p>Set the course defaults for completing progress tasks.</p>
+                  <div class="k-toolbar">
+                    <label><input type="checkbox" role="switch" id="managerRatingRequired"> Require a rating</label>
+                    <label><input type="checkbox" role="switch" id="managerCommentRequired"> Require a comment</label>
+                  </div>
+                  <ol id="managerRatingOptions" class="signoff-choices k-panel-gap"></ol>
+                  <div class="k-toolbar">
+                    <button type="button" class="btn btn-secondary" id="managerAddRating">Add rating choice</button>
+                    <button type="submit" class="btn btn-primary" id="managerSaveSignoff">Save requirements</button>
+                  </div>
+                </form>
+                <p id="managerSignoffMessage" role="status"></p>
+                <form id="managerTaskSignoffForm" class="k-panel-gap" hidden>
+                  <h3>Task overrides</h3>
+                  <div class="field">
+                    <label for="managerSignoffTask">Progress task</label>
+                    <select class="input" id="managerSignoffTask"></select>
+                  </div>
+                  <fieldset id="managerTaskSignoffFields" hidden>
+                    <legend>Requirements for this task</legend>
+                    <div class="field">
+                      <label for="managerTaskRating">Rating requirement</label>
+                      <select class="input" id="managerTaskRating"></select>
+                    </div>
+                    <div class="field">
+                      <label for="managerTaskComment">Comment requirement</label>
+                      <select class="input" id="managerTaskComment"></select>
+                    </div>
+                    <div class="field">
+                      <label for="managerTaskChoiceSource">Rating choices</label>
+                      <select class="input" id="managerTaskChoiceSource">
+                        <option value="inherit">Inherit course choices</option>
+                        <option value="custom">Use task choices</option>
+                      </select>
+                    </div>
+                    <div class="field" id="managerTaskChoicesField" hidden>
+                      <label for="managerTaskChoices">Task choices, one per line in display order</label>
+                      <textarea class="input" id="managerTaskChoices" rows="4"></textarea>
+                    </div>
+                    <div class="k-toolbar">
+                      <button class="btn btn-primary" type="submit">Save task overrides</button>
+                      <button class="btn btn-ghost" type="button" id="managerResetTaskSignoff">Reset to course defaults</button>
+                    </div>
+                  </fieldset>
+                  <p id="managerTaskSignoffMessage" role="status"></p>
+                </form>
+              </details>
+            </div>
+          </section>
+          <section class="k-card k-panel-gap">
             <div class="k-card__header">
               <h2 class="k-card__title">Roster progress</h2>
               <div class="muted small mt-8" id="progressCourseMeta"></div>
+            </div>
+            <div class="k-card__body">
+              <p class="muted small">Download current and retained historical student records for this course.</p>
+              <button type="button" class="btn btn-secondary" id="downloadProgressExcel">Download Excel workbook</button>
+              <p id="progressExportMessage" role="status"></p>
             </div>
             <div class="k-card__body k-card__body--flush">
               <div class="k-table-wrap">
@@ -276,7 +335,7 @@
     </main>
   </div>
 
-  <dialog class="k-modal" id="progressModal">
+  <dialog class="k-modal" id="progressModal" aria-labelledby="progressModalTitle">
     <div class="k-modal__panel k-modal__content--sm">
       <div class="k-modal__header">
         <h3 class="k-modal__title" id="progressModalTitle">Student progress</h3>

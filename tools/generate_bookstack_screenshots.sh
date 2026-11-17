@@ -17,6 +17,7 @@ views=(
   login
   activation
   dashboard
+  room-serving
   settings
   student-modules
   student-assignment
@@ -24,8 +25,10 @@ views=(
   student-quiz
   student-feedback
   ta-dashboard
+  ta-signoff
   grading-workspace
   manager-dashboard
+  manager-progress
   manager-course-settings
   manager-modules
   assignment-editor
@@ -37,7 +40,17 @@ views=(
   course-staff
 )
 
+if (($#)); then
+  views=("$@")
+fi
+
 for view in "${views[@]}"; do
+  screenshot="$OUTPUT_DIR/$view.png"
+  fixture_path="$FIXTURE"
+  if command -v cygpath >/dev/null 2>&1; then
+    screenshot="$(cygpath -am "$screenshot")"
+    fixture_path="/$(cygpath -am "$fixture_path")"
+  fi
   "$CHROME_BIN" \
     --headless \
     --disable-gpu \
@@ -45,8 +58,12 @@ for view in "${views[@]}"; do
     --no-sandbox \
     --allow-file-access-from-files \
     --window-size=1440,1000 \
-    --screenshot="$OUTPUT_DIR/$view.png" \
-    "file://$FIXTURE?view=$view" >/dev/null 2>&1
+    --screenshot="$screenshot" \
+    "file://$fixture_path?view=$view" >/dev/null 2>&1
+  if [[ ! -s "$OUTPUT_DIR/$view.png" ]]; then
+    echo "Chrome did not write $view.png." >&2
+    exit 1
+  fi
 done
 
 echo "Generated ${#views[@]} screenshots in $OUTPUT_DIR"

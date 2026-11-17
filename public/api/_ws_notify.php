@@ -35,7 +35,6 @@ function ws_notify(array $event): void {
         escapeshellarg($python),
         escapeshellarg($script),
         '--event=' . escapeshellarg($eventName),
-        '--secret=' . escapeshellarg($secret),
     ];
 
     foreach ([
@@ -58,6 +57,6 @@ function safe_ws_notify(array $event, string $context): void {
     try {
         ws_notify($event);
     } catch (Throwable $e) {
-        error_log('[kairos] ' . $context . ' exception=' . get_class($e) . ' message=' . $e->getMessage());
+        error_log('[kairos] ' . $context . ' exception=' . get_class($e));
     }
 }

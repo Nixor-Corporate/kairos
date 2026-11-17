@@ -54,7 +54,7 @@ Kairos is currently deployed in a cPanel-style environment and code should be wr
 
 ## Prerequisites
 
-- PHP 8.1+ with `pdo_mysql`, `fileinfo`, `json`, and `openssl`; `curl`, `zip`, and `mbstring` are recommended.
+- PHP 8.1+ with `pdo_mysql`, `fileinfo`, `json`, and `openssl`. Excel export requires `zip` and `xmlwriter`. The `curl` and `mbstring` extensions are recommended.
 - Composer 2 for installing the locked Google Drive API client.
 - MariaDB/MySQL 10.6+.
 - Python 3.10+ (`pip install -r requirements.txt`) for websocket relay.
@@ -189,6 +189,8 @@ mariadb -u <user> -p < db/migrations/<migration_file>.sql
 ```
 
 For first-time setup, run baseline schema/bootstrap script(s) first, then remaining migrations.
+
+Apply `db/migrations/20261116_0200_add_signoff_requirements.sql` before deploying the progress sign-off and Excel reporting code. See the [permissions and workbook dictionary](docs/audit-2026-11/features.md) and [release checklist](docs/audit-2026-11/deployment.md).
 
 The assignment upload settings, student private notes, and grading override contracts require:
 

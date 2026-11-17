@@ -29,8 +29,9 @@ function createSocket() {
   };
 }
 
-function createHarness({ withIo = true } = {}) {
+function createHarness({ withIo = true, wsUrl = 'wss://kairos.example.test', leaseExpiresAt } = {}) {
   const sockets = [];
+  const endpoints = [];
   const timers = new Map();
   const errors = [];
   let nextTimerId = 1;
@@ -51,8 +52,9 @@ function createHarness({ withIo = true } = {}) {
         ws: {
           user_id: 42,
           token: 'test-token',
-          ws_url: 'wss://kairos.example.test',
+          ws_url: wsUrl,
           socket_path: '/websocket/socket.io',
+          expires_at: leaseExpiresAt,
         },
       }),
     }),
@@ -82,8 +84,9 @@ function createHarness({ withIo = true } = {}) {
   };
   context.window = context;
   if (withIo) {
-    context.io = () => {
+    context.io = (origin, options) => {
       ioCalls += 1;
+      endpoints.push({ origin, options });
       const socket = createSocket();
       sockets.push(socket);
       return socket;
@@ -96,6 +99,7 @@ function createHarness({ withIo = true } = {}) {
   return {
     context,
     sockets,
+    endpoints,
     timers,
     errors,
     ioCalls: () => ioCalls,
@@ -132,6 +136,8 @@ function createHarness({ withIo = true } = {}) {
   harness.context.SignoffWS.init({ onEvent: (payload) => received.push(payload) });
   await harness.flush();
   assert.equal(harness.ioCalls(), 1, 'concurrent init calls must share one connection attempt');
+  assert.equal(harness.endpoints[0].options.auth.token, 'test-token');
+  assert.equal(harness.endpoints[0].options.query.token, undefined, 'bearer must stay out of transport URLs');
 
   const socket = harness.sockets[0];
   socket.connected = true;
@@ -151,6 +157,26 @@ function createHarness({ withIo = true } = {}) {
   assert.equal(state.reconnectAttempts, 8);
   assert.equal(state.status, 'unavailable');
   assert.equal(harness.timers.size, 0, 'retry ceiling must stop further timers');
+}
+
+{
+  const horizon = Math.floor(Date.now() / 1000) + 60;
+  const harness = createHarness({ leaseExpiresAt: horizon });
+  harness.context.SignoffWS.init({ courseId: 111 });
+  await harness.flush();
+  harness.sockets[0].trigger('connect');
+  assert.equal(harness.timers.size, 1, 'renew before the session lease expires');
+  await harness.runNextTimer();
+  await harness.runNextTimer();
+  assert.equal(harness.ioCalls(), 2);
+  assert.equal(harness.endpoints[1].options.query.course_id, '111');
+}
+
+{
+  const harness = createHarness({ wsUrl: 'ws://kairos.example.test' });
+  harness.context.SignoffWS.init({});
+  await harness.flush();
+  assert.equal(harness.ioCalls(), 0, 'HTTPS pages must not send credentials over plaintext WebSockets');
 }
 
 console.log('realtime runtime tests passed');

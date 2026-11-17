@@ -37,22 +37,35 @@ if (!ta_has_course($pdo, (int)$ta['user_id'], $courseId)) {
     json_out(['error' => 'forbidden', 'message' => 'Course not assigned'], 403);
 }
 
-$waiting = $pdo->prepare('SELECT 1 FROM queue_entries WHERE queue_id = :qid AND user_id = :uid LIMIT 1');
-$waiting->execute([':qid' => $queueId, ':uid' => $studentId]);
-if (!$waiting->fetchColumn()) {
-    json_out(['error' => 'student not waiting in queue'], 409);
-}
-
-$current = ta_active_assignment($pdo, $queueId);
-if ($current && $current['student_user_id'] !== $studentId) {
-    json_out(['error' => 'queue busy', 'serving' => $current], 409);
-}
-
 $pdo->beginTransaction();
 try {
+    // All accepts for a queue serialize on its row before inspecting assignments.
+    if (!queue_lock_for_update($pdo, $queueId)) {
+        $pdo->rollBack();
+        json_out(['error' => 'queue not found'], 404);
+    }
+    $current = ta_active_assignment($pdo, $queueId);
+    if ($current) {
+        $pdo->rollBack();
+        if ($current['student_user_id'] === $studentId && $current['ta_user_id'] === (int)$ta['user_id']) {
+            json_out([
+                'success' => true,
+                'assignment_id' => $current['ta_assignment_id'] ?? null,
+                'queue_id' => $queueId,
+                'student_user_id' => $studentId,
+                'ta_name' => $current['ta_name'],
+            ]);
+        }
+        json_out(['error' => 'queue busy', 'serving' => $current], 409);
+    }
     $del = $pdo->prepare('DELETE FROM queue_entries WHERE queue_id = :qid AND user_id = :uid');
     $del->execute([':qid' => $queueId, ':uid' => $studentId]);
+    if ($del->rowCount() !== 1) {
+        $pdo->rollBack();
+        json_out(['error' => 'student not waiting in queue'], 409);
+    }
 
+    $pk = ta_assignment_primary_key($pdo);
     $ins = $pdo->prepare(
         'INSERT INTO ta_assignments (ta_user_id, student_user_id, queue_id, started_at)
          VALUES (:ta, :stu, :qid, NOW())'
@@ -64,14 +77,14 @@ try {
     ]);
 
     $assignmentId = null;
-    $pk = ta_assignment_primary_key($pdo);
     if ($pk) {
+        // Read the ID before schema lookups or other statements clear it on this connection.
         $assignmentId = $pdo->lastInsertId();
         if (!$assignmentId) {
             $idStmt = $pdo->prepare(
                 'SELECT ' . $pk . ' FROM ta_assignments
                  WHERE ta_user_id = :ta AND student_user_id = :stu AND queue_id = :qid
-                 ORDER BY started_at DESC LIMIT 1'
+                 ORDER BY started_at DESC, ' . $pk . ' DESC LIMIT 1'
             );
             $idStmt->execute([
                 ':ta'  => $ta['user_id'],
@@ -133,7 +146,7 @@ $wsEvent['payload']['ta_name'] = $taName;
 if ($studentName !== '') {
     $wsEvent['payload']['student_name'] = $studentName;
 }
-ws_notify($wsEvent);
+safe_ws_notify($wsEvent, 'serving notification failed');
 
 $projectorPayload = [
     'event'   => 'projector_serve',
@@ -155,7 +168,7 @@ if (!empty($meta['course_id'])) {
 if (!empty($queue['room_id'])) {
     $projectorPayload['room_id'] = (int)$queue['room_id'];
 }
-ws_notify($projectorPayload);
+safe_ws_notify($projectorPayload, 'projector notification failed');
 
 queue_ws_notify($pdo, $queueId, 'serve', [
     'student_id'           => $studentId,

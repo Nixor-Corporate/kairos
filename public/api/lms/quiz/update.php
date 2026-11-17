@@ -64,6 +64,12 @@ if (!in_array($status, ['draft', 'published', 'archived'], true)) {
 
 $pdo->beginTransaction();
 try {
+    $unpublished = false;
+    if ($status === 'draft') {
+        $prior = $pdo->prepare('SELECT status FROM lms_assessments WHERE assessment_id = ? FOR UPDATE');
+        $prior->execute([$id]);
+        $unpublished = $prior->fetchColumn() === 'published';
+    }
     $pdo->prepare('UPDATE lms_assessments SET title=:title, instructions=:instructions, status=:status, max_attempts=:max_attempts, time_limit_minutes=:time_limit_minutes, available_from=:available_from, due_at=:due_at, updated_at=CURRENT_TIMESTAMP WHERE assessment_id=:id')
         ->execute([
         ':title' => $title,
@@ -96,6 +102,7 @@ try {
         'course_id' => (int)$existing['course_id'],
         'title' => $title,
         'status' => $status,
+        'unpublished' => $unpublished,
     ]);
     $pdo->commit();
 } catch (Throwable $e) {

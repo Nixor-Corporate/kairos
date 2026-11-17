@@ -67,8 +67,8 @@ $sourceChecks = [
     ['public/api/rooms.php', '/rbac_can_access_course/', 'rooms require enrolled or assigned course access'],
     ['public/api/queue_participants.php', '/rbac_can_view_queue/', 'queue participant reads remain course scoped'],
     ['public/api/queue_eta.php', '/rbac_can_view_queue/', 'queue ETA remains course scoped'],
-    ['ws_server.py', '/mappings\\s*=\\s*\\[\\s*\\(\\s*"student_courses"\\s*,\\s*None\\s*\\)\\s*\\]/', 'realtime accepts student enrollment regardless of global role'],
-    ['ws_server.py', '/course_id is not None and not _user_can_access_course/', 'realtime rejects unauthorized course rooms'],
+    ['ws_relay_access.py', '/enrolled = self\\._has_grant\\(STUDENT_GRANTS, user_id, course_id,/', 'realtime accepts student enrollment regardless of global role'],
+    ['ws_server.py', '/course_id = access\\.resolve_course\\(course_id, room_id\\).*?access\\.course_access\\(identity, course_id\\).*?if not allowed:/s', 'realtime authorizes the resolved scope before joining'],
     ['public/api/lms/grading/queue.php', "/'grade_course'/", 'grading requires course-scoped grade capability'],
     ['public/api/lms/analytics_metrics.php', "/'manage_course'/", 'analytics requires course-scoped management'],
 ];

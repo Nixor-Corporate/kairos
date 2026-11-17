@@ -24,7 +24,7 @@ if ($courseId <= 0) {
     json_out(['error' => 'invalid_course', 'message' => 'course_id required'], 400);
 }
 
-if (!course_exists($pdo, $courseId)) {
+if (!rbac_course_exists($pdo, $courseId)) {
     json_out(['error' => 'course_not_found'], 404);
 }
 
@@ -32,36 +32,24 @@ if ($q === '') {
     json_out([]);
 }
 
-$map = resolve_enrollment_mapping($pdo);
-if (!$map || empty($map['table']) || empty($map['course_col']) || empty($map['user_col'])) {
-    json_out(['error' => 'unsupported', 'message' => 'enrollment mapping not available'], 500);
-}
-
-$enrollmentTable = db_quote_identifier((string)$map['table']);
-$courseCol       = db_quote_identifier((string)$map['course_col']);
-$userCol         = db_quote_identifier((string)$map['user_col']);
-
 $isEmail = filter_var($q, FILTER_VALIDATE_EMAIL) !== false;
 if (!$isEmail && strlen($q) < 2) {
     json_out([]);
 }
 
-$params = [':cid' => $courseId];
-$limit  = 25;
-$sql    = "SELECT DISTINCT CAST(u.user_id AS UNSIGNED) AS user_id, u.name, u.email
-            FROM {$enrollmentTable} e
-            JOIN users u ON u.user_id = e.$userCol
-            WHERE e.$courseCol = CAST(:cid AS UNSIGNED)";
+[$roster, $params] = course_student_roster_query($pdo, $courseId);
+$sql = "SELECT CAST(u.user_id AS UNSIGNED) AS user_id, u.name, u.email
+        FROM ($roster) e JOIN users u ON u.user_id = e.user_id WHERE";
 
 if ($isEmail) {
-    $sql .= ' AND LOWER(u.email) = LOWER(:email)';
-    $params[':email'] = $q;
+    $sql .= ' LOWER(u.email) = LOWER(?)';
+    $params[] = $q;
 } else {
-    $sql .= ' AND LOWER(u.name) LIKE :term';
-    $params[':term'] = '%' . strtolower($q) . '%';
+    $sql .= ' LOWER(u.name) LIKE ?';
+    $params[] = '%' . strtolower($q) . '%';
 }
 
-$sql .= ' ORDER BY u.name LIMIT ' . (int)$limit;
+$sql .= ' ORDER BY u.name LIMIT 25';
 
 $st = $pdo->prepare($sql);
 $st->execute($params);
@@ -77,8 +65,3 @@ foreach ($rows as $row) {
 }
 
 json_out($out);
-
-function db_quote_identifier(string $name): string
-{
-    return '`' . str_replace('`', '``', $name) . '`';
-}

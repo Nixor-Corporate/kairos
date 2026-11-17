@@ -35,6 +35,7 @@
     reconnectAttempts: 0,
     reconnectTimer: null,
     restartTimer: null,
+    leaseTimer: null,
     connectionPromise: null,
     channels: new Set(DEFAULT_CHANNELS),
     handlers: {
@@ -186,6 +187,7 @@
   function shouldRefreshToken() {
     return !state.meLoaded
       || !state.me?.ws?.token
+      || (state.me.ws.expires_at && Date.now() >= (state.me.ws.expires_at - 15) * 1000)
       || !state.meFetchedAt
       || Date.now() - state.meFetchedAt >= TOKEN_REFRESH_THRESHOLD_MS;
   }
@@ -256,6 +258,7 @@
     if (!baseUrlRaw) return null;
 
     const baseUrl = new URL(baseUrlRaw);
+    if (global.location?.protocol === 'https:' && !['wss:', 'https:'].includes(baseUrl.protocol)) return null;
     const query = new URLSearchParams();
     const channels = Array.from(state.channels);
     if (channels.length) query.set('channels', channels.join(','));
@@ -263,13 +266,13 @@
     const filters = getCurrentFilters();
     if (filters.courseId !== null) query.set('course_id', String(filters.courseId));
     if (filters.roomId !== null) query.set('room_id', String(filters.roomId));
-    query.set('token', wsInfo.token);
 
     const socketPath = wsInfo.socket_path || wsPath || DEFAULT_WS_PATH;
     return {
       origin: `${baseUrl.protocol}//${baseUrl.host}`,
       path: `/${String(socketPath).replace(/^\/+/, '')}`,
       query: Object.fromEntries(query),
+      auth: { token: wsInfo.token },
     };
   }
 
@@ -309,6 +312,7 @@
   }
 
   function closeCurrent(manual) {
+    clearTimer('leaseTimer');
     const socket = state.socket;
     if (!socket) return;
     if (manual) state.manualSockets.add(socket);
@@ -385,16 +389,24 @@
 
   function bindSocketEvents(socket) {
     socket.on('connect', () => {
+      if (state.socket !== socket) return;
       resetBackoff();
       state.loggedMessages.delete('retry-limit');
       setStatus('connected', '');
+      const expiresAt = Number(state.me?.ws?.expires_at || 0);
+      if (expiresAt > 0) {
+        clearTimer('leaseTimer');
+        state.leaseTimer = setTimeout(restartConnection, Math.max(1000, (expiresAt - 10) * 1000 - Date.now()));
+      }
       if (typeof state.handlers.onOpen === 'function') {
         try { state.handlers.onOpen(); } catch (_) { reportHandlerError('open'); }
       }
     });
 
     socket.on('connect_error', () => {
-      if (state.socket === socket) state.socket = null;
+      if (state.socket !== socket) return;
+      state.socket = null;
+      clearTimer('leaseTimer');
       state.forceRefresh = true;
       try { socket.close(); } catch (_) { /* no-op */ }
       scheduleReconnect();
@@ -408,6 +420,7 @@
         try { state.handlers.onClose(); } catch (_) { reportHandlerError('close'); }
       }
       if (!manual) {
+        clearTimer('leaseTimer');
         state.forceRefresh = true;
         scheduleReconnect();
       }
@@ -448,6 +461,7 @@
       const socket = global.io(endpoint.origin, {
         path: endpoint.path,
         query: endpoint.query,
+        auth: endpoint.auth,
         transports: ['websocket'],
         upgrade: true,
         forceNew: true,

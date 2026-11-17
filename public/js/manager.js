@@ -232,7 +232,270 @@ async function openProgressView() {
   }
   setBreadcrumbs(`Course #${activeCourseId} · Progress`);
   showView('viewProgress');
-  await loadProgressSummary();
+  document.getElementById('downloadProgressExcel').onclick = downloadProgressWorkbook;
+  await Promise.all([loadProgressSummary(), loadSignoffRequirements(activeCourseId)]);
+}
+
+async function downloadProgressWorkbook() {
+  const courseId = activeCourseId;
+  const courseName = activeCourseName || `Course #${courseId}`;
+  const button = document.getElementById('downloadProgressExcel');
+  const message = document.getElementById('progressExportMessage');
+  if (!courseId || button.disabled) return;
+  button.disabled = true;
+  message.textContent = `Preparing workbook for ${courseName}…`;
+  try {
+    const response = await fetch(`./api/manager/progress_export.php?course_id=${encodeURIComponent(courseId)}`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'Could not download the workbook. Check your course access and try again.');
+    }
+    if (!response.headers.get('Content-Type')?.startsWith('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) {
+      throw new Error('The server did not return a workbook.');
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `kairos-course-${courseId}-progress.xlsx`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    message.textContent = `Workbook for ${courseName} sent to your downloads.`;
+  } catch (err) {
+    message.textContent = err.message || 'Could not download the workbook.';
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function loadSignoffRequirements(courseId) {
+  const form = document.getElementById('managerSignoffForm');
+  const status = document.getElementById('managerSignoffMessage');
+  const list = document.getElementById('managerRatingOptions');
+  const rating = document.getElementById('managerRatingRequired');
+  const comment = document.getElementById('managerCommentRequired');
+  const add = document.getElementById('managerAddRating');
+  const save = document.getElementById('managerSaveSignoff');
+  if (!form) return;
+  const request = Symbol();
+  form.signoffRequest = request;
+  const isCurrent = () => activeCourseId === courseId && form.signoffRequest === request;
+  form.hidden = true;
+  const taskForm = document.getElementById('managerTaskSignoffForm');
+  if (taskForm) taskForm.hidden = true;
+  status.textContent = 'Loading requirements…';
+  let policy;
+  const refreshAddButton = () => { add.disabled = list.children.length >= 50; };
+  const appendChoice = (option = { id: null, label: '', active: true }) => {
+    const item = document.createElement('li');
+    item.className = 'k-toolbar';
+    if (option.id) item.dataset.id = option.id;
+    const label = document.createElement('input');
+    label.className = 'input';
+    label.setAttribute('aria-label', 'Rating label');
+    label.required = true;
+    label.maxLength = 120;
+    label.value = option.label;
+    const activeLabel = document.createElement('label');
+    const active = document.createElement('input');
+    active.type = 'checkbox';
+    active.checked = option.active;
+    activeLabel.append(active, ' Active');
+    item.append(label, activeLabel);
+    for (const [title, move] of [
+      ['Move up', () => { if (item.previousElementSibling) list.insertBefore(item, item.previousElementSibling); }],
+      ['Move down', () => { if (item.nextElementSibling) list.insertBefore(item.nextElementSibling, item); }],
+    ]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-secondary btn-sm';
+      button.textContent = title;
+      button.setAttribute('aria-label', `${title} rating choice`);
+      button.onclick = () => { move(); button.focus(); };
+      item.append(button);
+    }
+    if (!option.id) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn btn-ghost btn-sm';
+      remove.textContent = 'Remove';
+      remove.onclick = () => { item.remove(); refreshAddButton(); add.focus(); };
+      item.append(remove);
+    }
+    list.append(item);
+    refreshAddButton();
+    return label;
+  };
+  const applyPolicy = (data) => {
+    policy = data;
+    rating.checked = data.rating_required;
+    comment.checked = data.comment_required;
+    list.replaceChildren();
+    data.options.forEach(appendChoice);
+    refreshAddButton();
+  };
+  try {
+    const response = await fetch(`./api/manager/signoff_policy.php?course_id=${encodeURIComponent(courseId)}&include_tasks=1`, { cache: 'no-store' });
+    if (!isCurrent()) return;
+    if (!response.ok) throw new Error('Could not load sign-off requirements.');
+    const data = await response.json();
+    if (!isCurrent()) return;
+    applyPolicy(data);
+    bindTaskSignoffSettings(courseId, data.tasks, isCurrent);
+    form.hidden = false;
+    status.textContent = '';
+    add.onclick = () => appendChoice().focus();
+  } catch (err) {
+    if (isCurrent()) status.textContent = 'Could not load sign-off requirements. Reopen Student progress to retry.';
+    return;
+  }
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    if (save.disabled || !isCurrent()) return;
+    const options = [...list.children].map(item => ({
+      id: item.dataset.id || null,
+      label: item.querySelector('input[type=text], input:not([type])').value,
+      active: item.querySelector('input[type=checkbox]').checked,
+    }));
+    const fields = [...form.elements];
+    fields.forEach(field => { field.disabled = true; });
+    status.textContent = 'Saving requirements…';
+    try {
+      const response = await fetch('./api/manager/signoff_policy.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          course_id: courseId,
+          revision: policy.revision,
+          rating_required: rating.checked,
+          comment_required: comment.checked,
+          options,
+        }),
+      });
+      const data = await response.json();
+      if (!isCurrent()) return;
+      if (!response.ok) throw new Error(data.message || 'Could not save sign-off requirements.');
+      applyPolicy(data);
+      status.textContent = 'Requirements saved.';
+    } catch (err) {
+      if (isCurrent()) status.textContent = err.message;
+    } finally {
+      fields.forEach(field => { field.disabled = false; });
+      if (isCurrent()) refreshAddButton();
+    }
+  };
+}
+
+function bindTaskSignoffSettings(courseId, tasks, isCurrent) {
+  const form = document.getElementById('managerTaskSignoffForm');
+  if (!form) return;
+  const task = document.getElementById('managerSignoffTask');
+  const fields = document.getElementById('managerTaskSignoffFields');
+  const rating = document.getElementById('managerTaskRating');
+  const comment = document.getElementById('managerTaskComment');
+  const source = document.getElementById('managerTaskChoiceSource');
+  const choices = document.getElementById('managerTaskChoices');
+  const choicesField = document.getElementById('managerTaskChoicesField');
+  const reset = document.getElementById('managerResetTaskSignoff');
+  const status = document.getElementById('managerTaskSignoffMessage');
+  const catalog = Array.isArray(tasks) ? tasks : [];
+  task.replaceChildren(new Option('Select a task', ''), ...catalog.map(item =>
+    new Option(`${item.category} · ${item.name}`, item.detail_id)));
+  task.disabled = catalog.length === 0;
+  form.hidden = false;
+  fields.hidden = true;
+  fields.disabled = true;
+  status.textContent = catalog.length ? '' : 'No progress tasks are available.';
+  let request;
+  let settings;
+  const endpoint = './api/manager/signoff_policy.php';
+  const syncChoices = () => {
+    choicesField.hidden = source.value !== 'custom';
+  };
+  const apply = (data) => {
+    settings = data;
+    const { overrides, defaults } = data;
+    for (const [control, key] of [[rating, 'rating_required'], [comment, 'comment_required']]) {
+      control.replaceChildren(
+        new Option(`Inherit course default (${defaults[key] ? 'required' : 'optional'})`, 'inherit'),
+        new Option('Require for this task', 'true'),
+        new Option('Optional for this task', 'false')
+      );
+      control.value = overrides[key] === null ? 'inherit' : String(overrides[key]);
+    }
+    source.value = overrides.options === null ? 'inherit' : 'custom';
+    choices.value = overrides.options?.join('\n') ?? '';
+    reset.disabled = Object.values(overrides).every(value => value === null);
+    syncChoices();
+    fields.hidden = false;
+    fields.disabled = false;
+  };
+  const exchange = async (url, options) => {
+    const response = await fetch(url, options);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Could not load or save the task requirements.');
+    return data;
+  };
+  task.onchange = async () => {
+    const load = Symbol();
+    request = load;
+    settings = null;
+    fields.hidden = true;
+    fields.disabled = true;
+    const detailId = task.value;
+    status.textContent = detailId ? 'Loading task requirements…' : '';
+    if (!detailId || !isCurrent()) return;
+    try {
+      const data = await exchange(`${endpoint}?course_id=${encodeURIComponent(courseId)}&detail_id=${encodeURIComponent(detailId)}`, { cache: 'no-store' });
+      if (!isCurrent() || request !== load) return;
+      apply(data);
+      status.textContent = '';
+    } catch (error) {
+      if (isCurrent() && request === load) status.textContent = error.message;
+    }
+  };
+  source.onchange = syncChoices;
+
+  const saveTask = async (restoreDefaults) => {
+    if (!settings || fields.disabled || !isCurrent()) return;
+    const save = request;
+    const parseRequirement = value => value === 'inherit' ? null : value === 'true';
+    const body = {
+      course_id: courseId,
+      detail_id: task.value,
+      revision: settings.revision,
+      task_revision: settings.task_revision,
+      rating_required: restoreDefaults ? null : parseRequirement(rating.value),
+      comment_required: restoreDefaults ? null : parseRequirement(comment.value),
+      options: restoreDefaults || source.value === 'inherit' ? null
+        : choices.value.split(/\r?\n/).map(label => label.trim()).filter(Boolean),
+    };
+    fields.disabled = true;
+    status.textContent = 'Saving task requirements…';
+    try {
+      const data = await exchange(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!isCurrent() || request !== save) return;
+      apply(data);
+      status.textContent = restoreDefaults ? 'Task now uses the course defaults.' : 'Task requirements saved.';
+    } catch (error) {
+      if (isCurrent() && request === save) {
+        status.textContent = error.message;
+        fields.disabled = false;
+      }
+    }
+  };
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    saveTask(false);
+  };
+  reset.onclick = () => saveTask(true);
 }
 
 async function loadProgressSummary() {
@@ -290,18 +553,21 @@ async function loadProgressSummary() {
 
 async function openProgressModal(userId) {
   if (!activeCourseId || !userId) return;
+  const courseId = activeCourseId;
   const modal = document.getElementById('progressModal');
   const title = document.getElementById('progressModalTitle');
   const meta = document.getElementById('progressModalMeta');
   const body = document.getElementById('progressModalBody');
   if (!modal || !title || !meta || !body) return;
 
-  modal.classList.remove('hidden');
-  modal.setAttribute('aria-hidden', 'false');
+  if (!modal.open) modal.showModal();
+  const request = Symbol();
+  modal.progressRequest = request;
   body.innerHTML = '<div class="muted">Loading progress details…</div>';
 
   try {
-    const data = await apiGet(`./api/manager/progress.php?course_id=${encodeURIComponent(activeCourseId)}&user_id=${encodeURIComponent(userId)}`);
+    const data = await apiGet(`./api/manager/progress.php?course_id=${encodeURIComponent(courseId)}&user_id=${encodeURIComponent(userId)}`);
+    if (!modal.open || modal.progressRequest !== request || courseId !== activeCourseId) return;
     title.textContent = data?.student?.name
       ? `${data.student.name} — progress`
       : 'Student progress';
@@ -313,11 +579,7 @@ async function openProgressModal(userId) {
     const detailsByCategory = data?.detailsByCategory || {};
     const statuses = data?.userStatuses || {};
     const comments = Array.isArray(data?.comments) ? data.comments : [];
-
-    if (!categories.length) {
-      body.innerHTML = '<div class="muted">No progress categories configured for this course.</div>';
-      return;
-    }
+    const history = Array.isArray(data?.signoffHistory) ? data.signoffHistory : [];
 
     const categoryHtml = categories.map((cat) => {
       const details = Array.isArray(detailsByCategory?.[cat.category_id]) ? detailsByCategory[cat.category_id] : [];
@@ -354,10 +616,20 @@ async function openProgressModal(userId) {
       : '<div class="muted">No comments yet.</div>';
 
     body.innerHTML = `
-      ${categoryHtml}
+      ${categoryHtml || '<div class="muted">No progress categories configured for this course.</div>'}
       <div>
         <h4 class="title-reset">TA comments</h4>
         ${commentHtml}
+      </div>
+      <div>
+        <h4 class="title-reset">Recent sign-offs</h4>
+        ${history.length ? history.map(event => `
+          <div class="progress-comment">
+            <div>${escapeHtml(event.task_name || `Task #${event.detail_id}`)} · ${escapeHtml(event.status)}</div>
+            <div class="muted small">${escapeHtml(event.actor_name || 'Staff')} · ${escapeHtml(formatTimestamp(event.created_at))}</div>
+            ${event.rating_label ? `<div>Rating: ${escapeHtml(event.rating_label)}</div>` : ''}
+            ${event.signoff_comment ? `<div>${escapeHtml(event.signoff_comment)}</div>` : ''}
+          </div>`).join('') : '<div class="muted">No sign-off history yet.</div>'}
       </div>
     `;
   } catch (err) {
@@ -368,8 +640,7 @@ async function openProgressModal(userId) {
 function closeProgressModal() {
   const modal = document.getElementById('progressModal');
   if (!modal) return;
-  modal.classList.add('hidden');
-  modal.setAttribute('aria-hidden', 'true');
+  if (modal.open) modal.close();
 }
 
 function formatTimestamp(value) {
@@ -689,12 +960,14 @@ async function createRoom() {
 
 async function loadRoster() {
   if (!activeCourseId) return;
+  const courseId = activeCourseId;
   const rosterEl = document.getElementById('courseRoster');
   if (!rosterEl) return;
   rosterEl.innerHTML = '<div class="muted">Loading roster…</div>';
   rosterEl.onclick = null;
   try {
-    const roster = await apiGet(`./api/manager/users_search.php?course_id=${encodeURIComponent(activeCourseId)}&roster=1`);
+    const roster = await apiGet(`./api/manager/users_search.php?course_id=${encodeURIComponent(courseId)}&roster=1`);
+    if (activeCourseId !== courseId) return;
     if (!Array.isArray(roster) || !roster.length) {
       rosterEl.innerHTML = '<div class="muted">No one enrolled yet.</div>';
       return;
@@ -716,13 +989,14 @@ async function loadRoster() {
       rosterEl.appendChild(row);
     });
     rosterEl.onclick = async (event) => {
+      if (activeCourseId !== courseId) return;
       const btn = event.target.closest('button[data-roster-remove]');
       if (btn) {
         const uid = Number(btn.getAttribute('data-roster-remove'));
         if (!confirm('Unenroll this user?')) return;
         try {
-          await apiPost('./api/manager/unenroll.php', { user_id: uid, course_id: activeCourseId });
-          await Promise.all([loadRoster(), rerunLastSearch()]);
+          await apiPost('./api/manager/unenroll.php', { user_id: uid, course_id: courseId });
+          if (activeCourseId === courseId) await Promise.all([loadRoster(), rerunLastSearch()]);
         } catch (err) {
           if (err?.status !== 403) {
             alert(err.message);
@@ -738,7 +1012,7 @@ async function loadRoster() {
       await openProgressModal(uid);
     };
   } catch (err) {
-    if (err?.status === 403) {
+    if (activeCourseId !== courseId || err?.status === 403) {
       return;
     }
     rosterEl.innerHTML = `<div class="muted">Failed to load roster: ${escapeHtml(err.message)}</div>`;
@@ -746,6 +1020,7 @@ async function loadRoster() {
 }
 
 async function searchUsers() {
+  const courseId = activeCourseId;
   if (!activeCourseId) return;
   const input = document.getElementById('userSearchInput');
   const term = (input.value || '').trim();
@@ -763,7 +1038,8 @@ async function searchUsers() {
   resultsEl.innerHTML = '<div class="muted">Searching…</div>';
   resultsEl.onclick = null;
   try {
-    const results = await apiGet(`./api/manager/users_search.php?course_id=${encodeURIComponent(activeCourseId)}&q=${encodeURIComponent(term)}`);
+    const results = await apiGet(`./api/manager/users_search.php?course_id=${encodeURIComponent(courseId)}&q=${encodeURIComponent(term)}`);
+    if (activeCourseId !== courseId || lastSearchTerm !== term) return;
     if (!Array.isArray(results) || !results.length) {
       resultsEl.innerHTML = '<div class="muted">No results.</div>';
       return;
@@ -782,15 +1058,16 @@ async function searchUsers() {
       resultsEl.appendChild(row);
     });
     resultsEl.onclick = async (event) => {
+      if (activeCourseId !== courseId) return;
       const btn = event.target.closest('button[data-search-action]');
       if (!btn) return;
       const uid = Number(btn.getAttribute('data-user-id'));
       const action = btn.getAttribute('data-search-action');
       try {
         if (action === 'enroll') {
-          await apiPost('./api/manager/enroll.php', { user_id: uid, course_id: activeCourseId });
+          await apiPost('./api/manager/enroll.php', { user_id: uid, course_id: courseId });
         }
-        await Promise.all([loadRoster(), rerunLastSearch()]);
+        if (activeCourseId === courseId) await Promise.all([loadRoster(), rerunLastSearch()]);
       } catch (err) {
         if (err?.status !== 403) {
           alert(err.message);
@@ -798,7 +1075,7 @@ async function searchUsers() {
       }
     };
   } catch (err) {
-    if (err?.status === 403) {
+    if (activeCourseId !== courseId || lastSearchTerm !== term || err?.status === 403) {
       return;
     }
     resultsEl.innerHTML = `<div class="muted">Search failed: ${escapeHtml(err.message)}</div>`;

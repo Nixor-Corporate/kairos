@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__.'/ta/common.php';
+require_once __DIR__ . '/_ws_notify.php';
 
 /**
  * Attempt to insert a row into change_log to notify SSE listeners.
@@ -295,13 +296,13 @@ function queue_ws_notify(PDO $pdo, int $queueId, string $change, array $options 
         $payload['assignmentId'] = $options['assignment_id'];
     }
 
-    ws_notify([
+    safe_ws_notify([
         'event'     => 'queue',
         'course_id' => $courseId,
         'room_id'   => $roomId,
         'ref_id'    => $options['ref_id'] ?? $queueId,
         'payload'   => $payload,
-    ]);
+    ], 'queue notification failed');
 }
 
 /**
@@ -562,4 +563,24 @@ function queue_avg_handle_minutes(PDO $pdo, int $queueId): ?float
     }
 
     return null;
+}
+/** Serialize changes to one queue inside an open transaction. */
+function queue_lock_for_update(PDO $pdo, int $queueId): bool
+{
+    $stmt = $pdo->prepare('SELECT queue_id FROM queues WHERE queue_id = :qid FOR UPDATE');
+    $stmt->execute([':qid' => $queueId]);
+    return (bool)$stmt->fetchColumn();
+}
+
+function queue_require_waiting_transition(PDO $pdo, int $queueId, int $studentId): void
+{
+    if (!queue_lock_for_update($pdo, $queueId)) {
+        $pdo->rollBack();
+        json_out(['error' => 'not_found', 'message' => 'Queue not found.'], 404);
+    }
+    $assignment = ta_active_assignment($pdo, $queueId);
+    if ($assignment && $assignment['student_user_id'] === $studentId) {
+        $pdo->rollBack();
+        json_out(['error' => 'already_serving', 'message' => 'Your TA is serving you now. Ask your TA to end the session.'], 409);
+    }
 }

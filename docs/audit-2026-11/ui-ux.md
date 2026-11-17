@@ -1,0 +1,13 @@
+# UI and accessibility assessment
+
+| Role | Observation | Change and follow-up |
+| --- | --- | --- |
+| Student | Survey respondents could often find the correct queue, but serving announcements, ETA, task location and persistent login were inconsistent. Current progress lives under the selected course. | Keep visible statuses and course navigation predictable. Measure task discovery with first-time users. Pair visual and text serving state with permission-aware alerts. Student task progress is a protected read. |
+| TA | The progress dropdown was well rated. Unclear serving transitions, weak feedback after a failed update and mobile density were more consequential than visual styling. | Keep the dropdown in the existing panel. Prompt for required data in a labelled native dialog. On a failed write retain persisted status and show the error. Test interrupted sessions, stale results and manual recovery on a narrow device. |
+| Manager | Student detail dialog visually failed to open in the source because the class toggle did not open the native dialog. The roster could differ from the central enrollment scope. | Open student detail with native dialog semantics, show up to 50 latest sign-off events, and place settings and workbook download in Student progress. Retain course selection as the scope control. |
+| Admin | Manager access is inherited through existing capabilities. Administrative account, diagnostics and role workflows remain separate from progress. | Test switching scopes on the same session, role revocation and explanation of what is included in an export. |
+| Projector | TA responses disagree on utility, and one respondent requested a bright palette. Use cases involve viewing distance and ambient light. | Verify existing display on a real projector and compare legibility before choosing any palette changes. |
+
+Changes use the existing shared shell and semantic colors. Labels name every sign-off field. Requirements use labelled toggles. The manager choice list supports keyboard reorder buttons. Native dialogs provide focus management and Escape, and save controls lock during submission. Test the sign-off flow in both themes at 320 px, 375 px, 768 px and desktop. Confirm page-level overflow, focus visibility, tap target size, live status announcement, required-field cues, and 150% zoom. The display fixtures are synthetic and are separate from production observations.
+
+[Manager progress screenshot](../bookstack/kairos/screenshots/manager-progress.png) · [TA sign-off screenshot](../bookstack/kairos/screenshots/ta-signoff.png) · [Survey rows and findings](findings.md)

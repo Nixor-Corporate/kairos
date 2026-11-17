@@ -191,6 +191,37 @@ function rbac_student_course_mappings(): array
     ];
 }
 
+/**
+ * SQL and parameters for the distinct students enrolled in one course.
+ * Identifiers come only from the same schema mappings used by the policy.
+ */
+function rbac_course_students_query(PDO $pdo, int $courseId): array
+{
+    $queries = [];
+    foreach (rbac_student_course_mappings() as $map) {
+        $columns = [$map['user_col'], $map['course_col']];
+        if ($map['role_col'] !== null) {
+            $columns[] = $map['role_col'];
+        }
+        if (!rbac_table_has_columns($pdo, $map['table'], $columns)) {
+            continue;
+        }
+        $table = rbac_quote_identifier($map['table']);
+        $uid = rbac_quote_identifier($map['user_col']);
+        $cid = rbac_quote_identifier($map['course_col']);
+        $sql = "SELECT DISTINCT $uid AS user_id FROM $table WHERE $cid = ?";
+        if ($map['role_col'] !== null) {
+            $role = rbac_quote_identifier($map['role_col']);
+            $sql .= " AND ($role IS NULL OR LOWER($role) = 'student')";
+        }
+        $queries[] = $sql;
+    }
+    if (!$queries) {
+        throw new RuntimeException('No supported enrollment mapping');
+    }
+    return [implode(' UNION ', $queries), array_fill(0, count($queries), $courseId)];
+}
+
 function rbac_student_course_ids(PDO $pdo, int $userId, bool $refresh = false): array
 {
     static $cache = [];

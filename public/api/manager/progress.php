@@ -1,17 +1,10 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/_helpers.php';
+require_once dirname(__DIR__, 3) . '/src/rbac.php';
 
 $user = require_login();
 $pdo = db();
-
-require_role_or_higher($pdo, $user, 'manager');
-
-$userId = isset($user['user_id']) ? (int)$user['user_id'] : 0;
-if ($userId <= 0) {
-    json_out(['error' => 'forbidden', 'message' => 'missing user id'], 403);
-}
 
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
@@ -26,15 +19,14 @@ if ($courseId <= 0) {
     json_out(['error' => 'course_id is required'], 400);
 }
 
-if (!user_role_at_least($pdo, $user, 'admin')) {
-    assert_manager_controls_course($pdo, $userId, $courseId);
+if (!rbac_can($pdo, $user, 'manage_course', $courseId)) {
+    json_out(['error' => 'forbidden'], 403);
 }
 
 $studentId = isset($_GET['user_id']) ? (int)$_GET['user_id'] : 0;
 
 if ($studentId > 0) {
-    $enrolledIds = course_enrollment_user_ids($pdo, $courseId);
-    if (!in_array($studentId, $enrolledIds, true)) {
+    if (!in_array($courseId, rbac_student_course_ids($pdo, $studentId), true)) {
         json_out(['error' => 'not_enrolled', 'message' => 'student not enrolled'], 404);
     }
     json_out(fetch_student_progress($pdo, $courseId, $studentId));
@@ -44,7 +36,10 @@ json_out(fetch_course_progress_summary($pdo, $courseId));
 
 function fetch_course_progress_summary(PDO $pdo, int $courseId): array
 {
-    $students = users_for_course($pdo, $courseId);
+    [$roster, $params] = rbac_course_students_query($pdo, $courseId);
+    $stmt = $pdo->prepare("SELECT u.user_id, u.name, u.email FROM users u JOIN ($roster) e USING (user_id) ORDER BY u.name, u.user_id");
+    $stmt->execute($params);
+    $students = $stmt->fetchAll();
     if (!$students) {
         return ['students' => []];
     }
@@ -193,6 +188,20 @@ function fetch_student_progress(PDO $pdo, int $courseId, int $studentId): array
         }
     }
 
+    $history = [];
+    if (table_exists($pdo, 'signoff_history')) {
+        $historyStmt = $pdo->prepare(
+            'SELECT h.signoff_event_id, h.detail_id, d.name AS task_name, h.previous_status, h.status,
+                    h.rating_label, h.signoff_comment, h.created_at, u.name AS actor_name
+             FROM signoff_history h
+             LEFT JOIN progress_details d ON d.detail_id = h.detail_id
+             LEFT JOIN users u ON u.user_id = h.actor_user_id
+             WHERE h.course_id = ? AND h.student_user_id = ? ORDER BY h.signoff_event_id DESC LIMIT 50'
+        );
+        $historyStmt->execute([$courseId, $studentId]);
+        $history = $historyStmt->fetchAll();
+    }
+
     return [
         'student' => $student,
         'categories' => $categories,
@@ -200,5 +209,6 @@ function fetch_student_progress(PDO $pdo, int $courseId, int $studentId): array
         'userStatuses' => (object)$statuses,
         'statuses' => $allStatuses,
         'comments' => $comments,
+        'signoffHistory' => $history,
     ];
 }

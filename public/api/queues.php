@@ -232,6 +232,7 @@ try {
                     'occupants'      => $waitingStudents,
                     'students'       => $students,
                     'serving'        => $serving,
+                    'avg_handle_minutes' => $queueId > 0 ? queue_avg_handle_minutes($pdo, $queueId) : null,
                     'updated_at'     => $updatedAt,
                 ];
             }, $rows);
@@ -298,6 +299,7 @@ try {
             $already = false;
             $pdo->beginTransaction();
             try {
+                queue_require_waiting_transition($pdo, $queue_id, (int)$user['user_id']);
                 $ins = $pdo->prepare(
                     'INSERT IGNORE INTO queue_entries (`queue_id`, `user_id`, `timestamp`)
                      VALUES (:qid, :uid, NOW())'
@@ -343,6 +345,7 @@ try {
             $already = false;
             $pdo->beginTransaction();
             try {
+                queue_require_waiting_transition($pdo, $queue_id, (int)$user['user_id']);
                 $del = $pdo->prepare(
                     'DELETE FROM queue_entries
                      WHERE `queue_id` = :qid AND `user_id` = :uid'

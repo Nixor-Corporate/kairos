@@ -7,8 +7,7 @@ const roomCard = document.getElementById('roomCard');
 const toastStack = document.getElementById('toastStack');
 let serveAudio;
 
-const AVERAGE_SERVICE_MINUTES = 5;
-const SERVED_SOUND_SRC = 'https://kairos.nixorcorporate.com/signoff/sounds/served-notification.mp3';
+const SERVED_SOUND_SRC = new URL('./sounds/served-notification.mp3', window.location.href).href;
 
 const state = {
   roomId: null,
@@ -20,6 +19,9 @@ const state = {
   me: null,
   initialized: false,
   currentQueueIdInRoom: null,
+  servingAlerts: new Map(),
+  refreshPromise: null,
+  refreshPending: false,
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -44,7 +46,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.userId = me?.user_id != null ? Number(me.user_id) : null;
     state.userName = me?.name || '';
   } catch (err) {
-    redirectToIndex();
+    if (err.status === 401) {
+      if (window.KairosIdentity) window.KairosIdentity.handleSessionExpired();
+      else window.location.replace('/signoff/');
+    } else {
+      showErrorCard('We could not check your session. Reload this page to try again.');
+    }
     return;
   }
 
@@ -60,6 +67,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.SignoffWS.updateFilters({ roomId: Number(state.roomId) });
   }
 
+  window.addEventListener('kairos:realtime-status', event => {
+    if (event.detail?.status === 'connected') reloadQueuesFromServer();
+  });
+  window.addEventListener('focus', refreshVisibleRoom);
+  window.addEventListener('online', refreshVisibleRoom);
+  document.addEventListener('visibilitychange', refreshVisibleRoom);
+  setInterval(refreshVisibleRoom, 30000);
   await loadInitialQueues();
 });
 
@@ -67,11 +81,10 @@ async function loadInitialQueues() {
   if (!state.roomId) return;
   setLoading(true, { showSkeleton: true });
   try {
-    const queues = await fetchQueues(state.roomId);
-    applyInitialQueues(Array.isArray(queues) ? queues : []);
+    await reloadQueuesFromServer({ reportInitialError: true });
   } catch (err) {
     console.error('queues fetch failed', err);
-    showErrorCard('We could not load queues for this room.');
+    if (queuesContainer) queuesContainer.innerHTML = '<div class="card">We could not load queues. Retrying when this page is active.</div>';
   } finally {
     setLoading(false);
   }
@@ -93,17 +106,14 @@ async function ensureLoggedIn() {
     headers: { 'Cache-Control': 'no-cache' },
   });
   if (!resp.ok) {
-    throw new Error('auth');
+    throw Object.assign(new Error('Unable to check session'), { status: resp.status });
   }
   const data = await resp.json();
-  if (!data || !data.email) {
-    throw new Error('auth');
+  if (Array.isArray(data) && data.length === 0) {
+    throw Object.assign(new Error('Sign-in required'), { status: 401 });
   }
+  if (!data?.email) throw new Error('Invalid session response');
   return data;
-}
-
-function redirectToIndex() {
-  window.location.replace('/signoff/');
 }
 
 async function fetchQueues(roomId) {
@@ -112,40 +122,16 @@ async function fetchQueues(roomId) {
     headers: { 'Cache-Control': 'no-cache' },
   });
   if (!resp.ok) {
-    throw new Error(`queues ${resp.status}`);
+    throw Object.assign(new Error(`queues ${resp.status}`), { status: resp.status });
   }
   return resp.json();
-}
-
-function applyInitialQueues(list) {
-  state.queues.clear();
-  state.queueRefs.clear();
-  state.currentQueueIdInRoom = null;
-  if (queuesContainer) {
-    queuesContainer.innerHTML = '';
-  }
-
-  if (!Array.isArray(list) || list.length === 0) {
-    showEmptyMessage();
-    return;
-  }
-
-  list.forEach((raw) => {
-    const queue = normalizeQueue(raw);
-    if (!queue.queueId) return;
-    state.queues.set(queue.queueId, queue);
-    createQueueCard(queue);
-  });
-
-  refreshCurrentQueueMembership({ forceUpdateButtons: true });
 }
 
 function detectCurrentQueueIdInRoom() {
   if (state.userId == null) return null;
   for (const queue of state.queues.values()) {
-    const hasMembership = queue.students.some(
-      (student) => student.id === state.userId && (student.status === 'waiting' || student.status === 'serving'),
-    );
+    const hasMembership = queue.serving?.student_user_id === state.userId
+      || queue.occupants.some(student => student.user_id === state.userId);
     if (hasMembership) {
       return queue.queueId;
     }
@@ -190,6 +176,7 @@ function normalizeQueue(raw) {
     const studentId = servingRaw.student_user_id != null ? Number(servingRaw.student_user_id) : null;
     if (taId || studentId) {
       serving = {
+        ta_assignment_id: servingRaw.ta_assignment_id ?? null,
         ta_user_id: taId,
         ta_name: servingRaw.ta_name || '',
         student_user_id: studentId,
@@ -221,6 +208,7 @@ function normalizeQueue(raw) {
     students,
     occupants,
     occupantCount,
+    averageHandleMinutes: Number(raw?.avg_handle_minutes),
     serving,
     updatedAt,
   };
@@ -300,6 +288,7 @@ function createQueueCard(queue) {
   const queueNote = document.createElement('div');
   queueNote.className = 'muted small';
   queueNote.dataset.role = 'queue-note';
+  queueNote.setAttribute('role', 'status');
   queueNote.hidden = true;
 
   const occupantsWrap = document.createElement('div');
@@ -396,7 +385,7 @@ function updateQueueButtons(queue, refs) {
   const selfId = state.userId;
   const waitingIds = new Set(queue.occupants.map((occ) => occ.user_id));
   const isWaiting = selfId != null && waitingIds.has(selfId);
-  const isServing = selfId != null && queue.students.some((student) => student.id === selfId && student.status === 'serving');
+  const isServing = selfId != null && queue.serving?.student_user_id === selfId;
   const activeQueueId = getCurrentQueueIdInRoom();
   const inAnotherQueue = activeQueueId != null && activeQueueId !== queue.queueId;
 
@@ -406,7 +395,7 @@ function updateQueueButtons(queue, refs) {
     joinBtn.disabled = isWaiting || isServing || inAnotherQueue;
   }
 
-  const leaveDisabled = !isWaiting;
+  const leaveDisabled = !isWaiting || isServing;
   if (leaveBtn.dataset.loading === '1') {
     leaveBtn.disabled = true;
   } else {
@@ -435,7 +424,8 @@ function updateQueueNote(queue, refs) {
 
   let note = '';
   if (isServingMe) {
-    note = 'You are currently being served in this queue.';
+    const taName = queue.serving.ta_name || 'Your TA';
+    note = `${taName} is serving you now. Ask your TA to end the session when you are finished.`;
   } else if (activeQueueId && activeQueueId !== queue.queueId) {
     note = 'You are already in a queue in this room. Please leave that queue before joining another.';
   }
@@ -445,44 +435,47 @@ function updateQueueNote(queue, refs) {
 }
 
 function handleQueueBroadcast(message) {
-  const payload = message?.payload !== undefined ? message.payload : message;
-  if (!payload || payload.queueId == null) {
-    return;
-  }
-  const queueId = Number(payload.queueId);
-  if (!Number.isFinite(queueId) || queueId <= 0) {
-    return;
-  }
-  const roomId = payload.roomId != null ? Number(payload.roomId) : null;
-  if (state.roomId && roomId && Number(state.roomId) !== roomId) {
-    return;
-  }
-
-  if (!state.queues.has(queueId)) {
-    reloadQueuesFromServer();
-    return;
-  }
-
-  if (payload.change === 'bulk_refresh') {
-    reloadQueuesFromServer();
-    return;
-  }
-
-  applyQueuePayload(queueId, payload);
+  const payload = message?.payload ?? message;
+  const roomId = Number(payload?.roomId ?? payload?.room_id ?? message?.room_id);
+  if (state.roomId && (!roomId || roomId === state.roomId)) reloadQueuesFromServer();
 }
 
-async function reloadQueuesFromServer() {
-  if (!state.roomId) return;
-  try {
-    const queues = await fetchQueues(state.roomId);
-    syncQueuesWithServer(Array.isArray(queues) ? queues : []);
-  } catch (err) {
-    console.error('Failed to refresh queues', err);
-  }
+function refreshVisibleRoom() {
+  if (!document.hidden) reloadQueuesFromServer();
+}
+
+function reloadQueuesFromServer({ reportInitialError = false } = {}) {
+  if (!state.roomId || !state.userId) return Promise.resolve();
+  state.refreshPending = true;
+  if (state.refreshPromise) return state.refreshPromise;
+  state.refreshPromise = (async () => {
+    while (state.refreshPending) {
+      state.refreshPending = false;
+      try {
+        const queues = await fetchQueues(state.roomId);
+        syncQueuesWithServer(Array.isArray(queues) ? queues : []);
+      } catch (err) {
+        if (err.status === 401 && window.KairosIdentity) {
+          state.userId = null;
+          state.refreshPending = false;
+          window.KairosIdentity.handleSessionExpired();
+        } else if (err.status === 403) {
+          syncQueuesWithServer([]);
+          if (queuesContainer) queuesContainer.innerHTML = '<div class="card">You do not have access to the queues in this room.</div>';
+        } else if (reportInitialError) {
+          throw err;
+        } else {
+          console.error('Failed to refresh queues', err);
+        }
+      }
+    }
+  })().finally(() => { state.refreshPromise = null; });
+  return state.refreshPromise;
 }
 
 function syncQueuesWithServer(list) {
   if (!queuesContainer) return;
+  queuesContainer.querySelectorAll(':scope > .sk').forEach(card => card.remove());
   const seen = new Set();
 
   list.forEach((raw) => {
@@ -507,86 +500,22 @@ function syncQueuesWithServer(list) {
   });
 
   refreshCurrentQueueMembership({ forceUpdateButtons: true });
+  if (!state.queues.size) showEmptyMessage();
+  reconcileServingAlerts();
 }
 
-function applyQueuePayload(queueId, payload) {
-  const queue = state.queues.get(queueId);
-  if (!queue) return;
-
-  if (payload.snapshot && Array.isArray(payload.snapshot.students)) {
-    queue.students = payload.snapshot.students.map(normalizeQueueStudent);
-    queue.updatedAt = payload.snapshot.updatedAt != null
-      ? Number(payload.snapshot.updatedAt)
-      : Math.floor(Date.now() / 1000);
-  } else if (payload.student && payload.change) {
-    applyIncrementalQueueChange(queue, payload);
-    queue.updatedAt = Math.floor(Date.now() / 1000);
+function reconcileServingAlerts() {
+  const active = new Map();
+  for (const queue of state.queues.values()) {
+    const serving = queue.serving;
+    if (!serving || serving.student_user_id !== state.userId) continue;
+    const key = serving.ta_assignment_id ?? `${serving.ta_user_id}:${serving.started_at}`;
+    active.set(queue.queueId, key);
+    if (state.servingAlerts.get(queue.queueId) === key) continue;
+    showServeNotification(serving.ta_name || 'A TA');
+    playServeNotificationSound();
   }
-
-  if (payload.waitingCount != null) {
-    queue.occupantCount = Number(payload.waitingCount);
-  } else {
-    queue.occupantCount = queue.students.filter((student) => student.status === 'waiting').length;
-  }
-
-  queue.occupants = queue.students
-    .filter((student) => student.status === 'waiting')
-    .map((student) => ({
-      user_id: student.id,
-      name: student.name,
-      joined_at: student.joinedAt || null,
-    }));
-
-  const hasServingInfo = Object.prototype.hasOwnProperty.call(payload, 'servingTaId')
-    || Object.prototype.hasOwnProperty.call(payload, 'servingStudentId')
-    || Object.prototype.hasOwnProperty.call(payload, 'servingTaName')
-    || Object.prototype.hasOwnProperty.call(payload, 'servingStudentName');
-
-  if (hasServingInfo) {
-    const servingTaId = payload.servingTaId != null ? Number(payload.servingTaId) : null;
-    const servingStudentId = payload.servingStudentId != null ? Number(payload.servingStudentId) : null;
-    const servingTaName = payload.servingTaName != null ? payload.servingTaName : (queue.serving?.ta_name ?? '');
-    const servingStudentName = payload.servingStudentName != null ? payload.servingStudentName : (queue.serving?.student_name ?? '');
-
-    if (servingTaId || servingStudentId) {
-      queue.serving = {
-        ta_user_id: servingTaId,
-        ta_name: servingTaName,
-        student_user_id: servingStudentId,
-        student_name: servingStudentName,
-        started_at: queue.serving?.started_at ?? null,
-      };
-    } else {
-      queue.serving = null;
-    }
-  }
-
-  state.queues.set(queueId, queue);
-  updateQueueCard(queue);
-  refreshCurrentQueueMembership();
-}
-
-function applyIncrementalQueueChange(queue, payload) {
-  const studentPayload = payload.student;
-  if (!studentPayload) return;
-  const studentId = Number(studentPayload.id ?? studentPayload.user_id ?? 0);
-  if (!studentId) return;
-
-  if (payload.change === 'join') {
-    const exists = queue.students.some((student) => student.id === studentId && student.status === 'waiting');
-    if (!exists) {
-      queue.students.push({
-        id: studentId,
-        name: studentPayload.name || '',
-        status: 'waiting',
-        joinedAt: null,
-      });
-    }
-  } else if (payload.change === 'leave') {
-    queue.students = queue.students.filter((student) => !(student.id === studentId && student.status === 'waiting'));
-  } else if (payload.change === 'stop_serve') {
-    queue.students = queue.students.filter((student) => student.id !== studentId || student.status !== 'serving');
-  }
+  state.servingAlerts = active;
 }
 
 function getWaitingCount(queue) {
@@ -607,22 +536,23 @@ function getStudentQueuePosition(queue, studentId) {
 }
 
 function getEstimatedWaitMinutes(queue, studentId) {
-  if (!queue) return null;
+  if (!queue || !Number.isFinite(queue.averageHandleMinutes) || queue.averageHandleMinutes <= 0) return null;
   const waitingCount = getWaitingCount(queue);
   const position = getStudentQueuePosition(queue, studentId);
   if (position != null) {
-    return position * AVERAGE_SERVICE_MINUTES;
+    return position * queue.averageHandleMinutes;
   }
-  if (waitingCount <= 0) {
+  if (waitingCount <= 0 && !queue.serving) {
     return 0;
   }
-  return (waitingCount + 1) * AVERAGE_SERVICE_MINUTES;
+  return (waitingCount + 1) * queue.averageHandleMinutes;
 }
 
 function formatEstimatedWait(queue, studentId) {
+  if (queue?.serving?.student_user_id === studentId) return '';
   const minutes = getEstimatedWaitMinutes(queue, studentId);
-  if (minutes == null) return '';
-  if (minutes <= 0) return 'Estimated wait: ~0–5 minutes';
+  if (minutes == null) return 'Wait estimate unavailable';
+  if (minutes <= 0) return '';
   const rounded = Math.max(1, Math.round(minutes));
   return `Estimated wait: ~${rounded} minute${rounded === 1 ? '' : 's'}`;
 }
@@ -654,75 +584,15 @@ queuesContainer?.addEventListener('click', async (event) => {
   try {
     const loadingText = button.getAttribute('data-loading-text') || (action === 'join' ? 'Joining…' : 'Leaving…');
     startButtonLoading(button, loadingText);
-    const response = await mutateQueue(action, queueId);
-
-    if (response?.success) {
-      if (action === 'join' && !response.already && state.userId != null) {
-        const nextStudents = queue.students
-          .filter((student) => !(student.id === state.userId && student.status === 'waiting'))
-          .concat([{
-            id: state.userId,
-            name: state.userName || 'You',
-            status: 'waiting',
-            joinedAt: null,
-          }]);
-        applyQueuePayload(queueId, {
-          queueId,
-          roomId: queue.roomId,
-          change: 'join',
-          student: { id: state.userId, name: state.userName || '' },
-          waitingCount: nextStudents.filter((student) => student.status === 'waiting').length,
-          snapshot: {
-            students: nextStudents.map((student) => ({
-              id: student.id,
-              name: student.name,
-              status: student.status,
-              joinedAt: student.joinedAt || null,
-            })),
-            updatedAt: Math.floor(Date.now() / 1000),
-          },
-          servingTaId: queue.serving?.ta_user_id ?? null,
-          servingTaName: queue.serving?.ta_name ?? null,
-          servingStudentId: queue.serving?.student_user_id ?? null,
-          servingStudentName: queue.serving?.student_name ?? null,
-        });
-        stopButtonLoading(button, { keepDisabled: true });
-      } else if (action === 'leave' && !response.already && state.userId != null) {
-        const nextStudents = queue.students.filter((student) => !(student.id === state.userId && student.status === 'waiting'));
-        applyQueuePayload(queueId, {
-          queueId,
-          roomId: queue.roomId,
-          change: 'leave',
-          student: { id: state.userId, name: state.userName || '' },
-          waitingCount: nextStudents.filter((student) => student.status === 'waiting').length,
-          snapshot: {
-            students: nextStudents.map((student) => ({
-              id: student.id,
-              name: student.name,
-              status: student.status,
-              joinedAt: student.joinedAt || null,
-            })),
-            updatedAt: Math.floor(Date.now() / 1000),
-          },
-          servingTaId: queue.serving?.ta_user_id ?? null,
-          servingTaName: queue.serving?.ta_name ?? null,
-          servingStudentId: queue.serving?.student_user_id ?? null,
-          servingStudentName: queue.serving?.student_name ?? null,
-        });
-        stopButtonLoading(button);
-      } else {
-        stopButtonLoading(button);
-        updateQueueCard(queue);
-      }
-    } else {
-      const message = response?.message || response?.error;
-      throw new Error(message || 'Request failed');
-    }
+    await mutateQueue(action, queueId);
+    await reloadQueuesFromServer();
   } catch (err) {
-    console.error('queue mutate failed', err);
+    showToast(err?.message || 'Something went wrong.');
+    await reloadQueuesFromServer();
+  } finally {
     stopButtonLoading(button);
-    const message = err?.message || 'Something went wrong.';
-    showToast(message);
+    const current = state.queues.get(queueId);
+    if (current) updateQueueCard(current);
   }
 });
 
@@ -811,48 +681,11 @@ function showErrorCard(message) {
   `;
 }
 
-function handleTaAcceptPayload(payload) {
-  const info = normalizeTaAcceptPayload(payload);
-  if (!info) return;
-
-  const matchesStudent = state.userId != null && info.studentId != null
-    && Number(info.studentId) === Number(state.userId);
-  if (!matchesStudent) return;
-
-  if (state.roomId && info.roomId && Number(state.roomId) !== Number(info.roomId)) {
-    return;
-  }
-
-  const taName = info.taName || 'A TA';
-  playServeNotificationSound();
-  showServeNotification(taName);
-
-  if (info.queueId) {
-    state.currentQueueIdInRoom = info.queueId;
-  }
-  refreshCurrentQueueMembership({ forceUpdateButtons: true });
-}
-
-function normalizeTaAcceptPayload(raw) {
-  const source = raw && typeof raw === 'object' && raw.payload && typeof raw.payload === 'object'
-    ? raw.payload
-    : raw || {};
-
-  const studentIdRaw = source.student_user_id ?? source.user_id ?? source.studentId ?? source.student_id;
-  const roomIdRaw = source.room_id ?? source.roomId ?? null;
-  const queueIdRaw = source.queue_id ?? source.queueId ?? source.ref_id ?? source.refId ?? raw?.ref_id ?? null;
-  const taName = source.ta_name ?? source.taName ?? '';
-
-  const studentId = Number(studentIdRaw);
-  const roomId = roomIdRaw != null ? Number(roomIdRaw) : null;
-  const queueId = queueIdRaw != null ? Number(queueIdRaw) : null;
-
-  return {
-    studentId: Number.isFinite(studentId) ? studentId : null,
-    roomId: Number.isFinite(roomId) ? roomId : null,
-    queueId: Number.isFinite(queueId) ? queueId : null,
-    taName: taName || '',
-  };
+function handleTaAcceptPayload(message) {
+  const payload = message?.payload ?? message;
+  const studentId = Number(payload?.student_user_id ?? payload?.user_id);
+  const roomId = Number(payload?.room_id ?? payload?.roomId ?? message?.room_id);
+  if (studentId === state.userId && (!roomId || roomId === state.roomId)) reloadQueuesFromServer();
 }
 
 function playServeNotificationSound() {

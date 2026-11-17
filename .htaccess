@@ -13,7 +13,7 @@ RewriteRule \.(bak|old|orig|tmp|temp|swp|swo|log|sql|ini|conf|ya?ml|lock|dist|ba
 RewriteCond %{REQUEST_URI} ^/$
 RewriteRule ^$ /signoff/ [R=302,L]
 
-# --- WebSocket + emit reverse proxy (must be before RewriteBase/other rules) ---
+# --- WebSocket reverse proxy (must be before RewriteBase/other rules) ---
 
 # Proxy Socket.IO realtime traffic at the same path advertised by api/config.php and api/me.php.
 RewriteCond %{HTTP:Upgrade} =websocket [NC]
@@ -23,13 +23,13 @@ RewriteRule ^websocket/socket\.io/?(.*)$ ws://127.0.0.1:8090/websocket/socket.io
 # Socket.IO may start with HTTP polling before upgrading, and diagnostics use polling too.
 RewriteRule ^websocket/socket\.io/?(.*)$ http://127.0.0.1:8090/websocket/socket.io/$1 [P,L,QSA]
 
-# Legacy direct WebSocket/emit endpoints retained for older clients and operational tooling.
+# Legacy direct WebSocket route retained for older clients and operational tooling.
 RewriteCond %{HTTP:Upgrade} =websocket [NC]
 RewriteCond %{HTTP:Connection} upgrade [NC]
 RewriteRule ^ws$ ws://127.0.0.1:8090/ws [P,L]
 
-# Proxy emit HTTP: /signoff/emit → http://127.0.0.1:8090/emit
-RewriteRule ^emit$ http://127.0.0.1:8090/emit [P,L]
+# The broker is called directly over loopback by PHP's emitter.
+RewriteRule ^(?:signoff/)?(?:public/)?emit/?$ - [F,END,NC]
 
 RewriteBase /signoff/
 

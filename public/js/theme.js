@@ -224,12 +224,15 @@
     },
 
     handleSessionExpired() {
+      this.me = null;
+      this.caps = null;
       this.loading = false;
       this.error = true;
       this.renderSignedOut();
 
       const pathname = window.location.pathname.toLowerCase();
-      const isPublic = pathname === '/signoff/' || pathname.endsWith('/index.html') || pathname.endsWith('/') || isPreAuthView();
+      const isPublic = ['/', '/index', '/index.html', '/signoff', '/signoff/', '/signoff/index', '/signoff/index.html'].includes(pathname)
+        || isPreAuthView();
       if (!isPublic) {
         try {
           if (window.sessionStorage) {
