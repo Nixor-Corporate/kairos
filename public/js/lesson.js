@@ -72,7 +72,7 @@
     LMS.nav.setCourseContext(currentCourseId, courseName, course);
     LMS.nav.setActive('modules');
     LMS.nav.setBreadcrumb([
-      { name: 'All Courses', href: '/signoff/' },
+      { name: 'All Courses', href: '/' },
       { name: courseName, href: `./course.html?course_id=${encodeURIComponent(currentCourseId)}` },
       { name: 'Modules', href: modulesHref },
       { name: lessonTitle },

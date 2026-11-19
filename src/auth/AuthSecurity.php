@@ -49,6 +49,12 @@ final class AuthSecurity
         if (!is_array($parts) || isset($parts['scheme'], $parts['host']) || isset($parts['host'])) {
             return null;
         }
+        if ($basePath === '/' && preg_match('~^/signoff(?:/|$)~', $parts['path'] ?? '')) {
+            $value = preg_replace('~^/signoff(?=/|[?#]|$)~', '', $value);
+            if ($value === null || !str_starts_with($value, '/') || str_starts_with($value, '//')) {
+                return null;
+            }
+        }
         return $value;
     }
 }

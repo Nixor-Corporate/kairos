@@ -91,7 +91,7 @@ function bindEvents() {
     } catch (err) {
       console.warn('logout failed', err);
     }
-    window.location.href = '/signoff/';
+    window.location.href = '/';
   });
 
   els.localAccountCourse?.addEventListener('change', () => {

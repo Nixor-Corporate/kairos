@@ -318,7 +318,7 @@
         LMS.nav.setCourseContext(COURSE_ID, courseLabel, course);
         LMS.nav.setActive('home');
         LMS.nav.setBreadcrumb([
-            { name: 'All Courses', href: '/signoff/' },
+            { name: 'All Courses', href: '/' },
             { name: course.code || courseLabel },
         ]);
         document.title = `${courseLabel} — Kairos`;
@@ -352,7 +352,7 @@
             </div>
             <div class="k-inline-actions">
               ${canEnrol ? '<button type="button" class="btn btn-primary" id="courseEnrollBtn">Enrol in course</button>' : ''}
-              <a class="btn btn-ghost" href="/signoff/">Back to all courses</a>
+              <a class="btn btn-ghost" href="/">Back to all courses</a>
             </div>
             <p class="k-text-sm k-text-muted" id="courseEnrollStatus" role="status" aria-live="polite"></p>
           </section>`;
@@ -390,7 +390,7 @@
         hideEl('coursePublicPreview');
         showEl('courseSkeleton');
         if (!COURSE_ID) {
-            LMS.renderAccessDenied($('courseAccessDenied'), 'No course specified.', '/signoff/');
+            LMS.renderAccessDenied($('courseAccessDenied'), 'No course specified.', '/');
             hideEl('courseSkeleton');
             showEl('courseAccessDenied');
             return;
@@ -401,7 +401,7 @@
         hideEl('courseSkeleton');
 
         if (courseRes.status === 403 || courseRes.status === 404) {
-            LMS.renderAccessDenied($('courseAccessDenied'), 'This course is private or unavailable to your account.', '/signoff/');
+            LMS.renderAccessDenied($('courseAccessDenied'), 'This course is private or unavailable to your account.', '/');
             showEl('courseAccessDenied');
             return;
         }

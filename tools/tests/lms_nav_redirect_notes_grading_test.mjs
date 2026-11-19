@@ -40,10 +40,10 @@ function executeInContext(files, contextPatches = {}) {
     const context = executeInContext(['public/js/lms-core.js']);
     const nav = context.window.KairosLMS.nav;
     
-    // Valid relative path starting with /signoff/
+    // Saved legacy paths resolve to the root route.
     assert.equal(
         nav.validateReturnUrl('/signoff/assignment.html?course_id=2&assignment_id=8'),
-        '/signoff/assignment.html?course_id=2&assignment_id=8'
+        '/assignment.html?course_id=2&assignment_id=8'
     );
     
     // Invalid: absolute URL to external site
@@ -58,7 +58,9 @@ function executeInContext(files, contextPatches = {}) {
     assert.equal(nav.validateReturnUrl('/signoff/%5cevil.com'), null);
     assert.equal(nav.validateReturnUrl('/signoff/%5Cevil.com'), null);
     
-    // Invalid: doesn't start with /signoff/
+    assert.equal(nav.validateReturnUrl('/room?room_id=3#queue'), '/room?room_id=3#queue');
+    assert.equal(nav.validateReturnUrl('/signoff/'), null);
+    // Invalid: unknown page
     assert.equal(nav.validateReturnUrl('/other/path'), null);
 }
 

@@ -73,7 +73,7 @@
 
     async function loadPage() {
         if (!COURSE_ID) {
-            LMS.renderAccessDenied($('accessDenied'), 'No course specified.', '/signoff/');
+            LMS.renderAccessDenied($('accessDenied'), 'No course specified.', '/');
             hideEl('skeletonView');
             showEl('accessDenied');
             return;
@@ -87,7 +87,7 @@
         hideEl('skeletonView');
 
         if (courseRes.status === 403 || listRes.status === 403) {
-            LMS.renderAccessDenied($('accessDenied'), 'You are not enrolled in this course.', '/signoff/');
+            LMS.renderAccessDenied($('accessDenied'), 'You are not enrolled in this course.', '/');
             showEl('accessDenied');
             return;
         }

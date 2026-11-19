@@ -319,7 +319,7 @@
     // ── Main load ──────────────────────────────────────────────
     async function loadPage() {
         if (!ASSIGN_ID) {
-            LMS.renderAccessDenied($('assignAccessDenied'), 'No assignment specified. Please select an assignment from the Modules page.', COURSE_ID ? `./modules.html?course_id=${encodeURIComponent(COURSE_ID)}` : '/signoff/');
+            LMS.renderAccessDenied($('assignAccessDenied'), 'No assignment specified. Please select an assignment from the Modules page.', COURSE_ID ? `./modules.html?course_id=${encodeURIComponent(COURSE_ID)}` : '/');
             hideEl('assignSkeleton');
             showEl('assignAccessDenied');
             return;

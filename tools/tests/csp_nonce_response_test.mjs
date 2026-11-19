@@ -99,6 +99,8 @@ try {
   const firstHtml = await first.text();
   const second = await fetch(endpoint);
   const secondHtml = await second.text();
+  const projector = await fetch(new URL('?page=projector', endpoint));
+  const projectorHtml = await projector.text();
   const missingHead = await fetch(`http://127.0.0.1:${port}/html.php?page=missing`, {
     method: 'HEAD',
   });
@@ -116,6 +118,11 @@ try {
   assert.notEqual(firstNonce, secondNonce, 'separate HTML requests must receive different nonces');
   assert.doesNotMatch(firstHtml, /\{\{CSP_NONCE\}\}/);
   assert.doesNotMatch(secondHtml, /\{\{CSP_NONCE\}\}/);
+  assert.match(firstHtml, /id="signin" class="[^"]*\bhidden\b/);
+  assert.match(firstHtml, /id="dashboardSessionPending"/);
+  assert.equal(projector.status, 200);
+  responseNonce(projector, projectorHtml);
+  assert.match(projectorHtml, /id="projectorTheme" aria-pressed="false"/);
 } finally {
   php.kill('SIGTERM');
   await Promise.race([

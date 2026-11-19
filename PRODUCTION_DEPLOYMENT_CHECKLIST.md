@@ -3,7 +3,7 @@
 ## Change Window
 
 - [ ] Schedule a controlled deployment window.
-- [ ] Back up the current `/signoff/` files and effective Apache configuration.
+- [ ] Back up the current webroot files and effective Apache configuration.
 - [ ] Take a database backup before applying the announcement, assignment, grading, and local-auth migrations.
 - [ ] Record the current Python realtime process command and rollback artifact.
 - [ ] Confirm no unrelated working-tree files are included in the deployment package.
@@ -102,14 +102,14 @@ mariadb -u <user> -p < db/migrations/20260614_2100_add_local_authentication.sql
 - [ ] Keep Cloudflare Bot Fight Mode enabled.
 - [ ] Keep JavaScript Detections enabled. Bot Fight Mode enables it automatically.
 - [ ] Do not create a Bot Fight Mode bypass for `/signoff/`; Bot Fight Mode is expected to inject its detection script into HTML.
-- [ ] Create a configuration rule for `/signoff/*` that disables Rocket Loader.
-- [ ] Disable Browser Insights/Web Analytics script injection for `/signoff/*`. If route-level exclusion is unavailable, disable it for the zone/application.
+- [ ] Create a configuration rule scoped to the Kairos hostname that disables Rocket Loader.
+- [ ] Disable Browser Insights/Web Analytics script injection for the Kairos hostname. If route-level exclusion is unavailable, disable it for the zone/application.
 - [ ] Do not add `static.cloudflareinsights.com` to Kairos CSP merely to silence an optional beacon.
 - [ ] Do not add `play.google.com` to CSP; blocked Google telemetry is not required by Kairos.
 - [ ] Bypass Cloudflare HTML caching for Kairos or confirm the cache honors `Cache-Control: private, no-store`; a cached HTML response would reuse its nonce.
 - [ ] Static JavaScript, CSS, images, and the vendored Socket.IO client may retain their existing cache policy.
 - [ ] Ensure WebSocket proxying is enabled.
-- [ ] Purge cached `/signoff/*` HTML, JavaScript, CSS, and `.htaccess`-affected responses after file deployment.
+- [ ] Purge cached Kairos HTML, JavaScript, CSS, and `.htaccess`-affected responses after file deployment.
 
 All critical scripts also carry `data-cfasync="false"` as a repository-side defense, but the route rule remains required for deterministic behavior.
 
@@ -118,13 +118,14 @@ All critical scripts also carry `data-cfasync="false"` as a repository-side defe
 - [ ] Confirm `mod_headers`, `mod_rewrite`, `mod_proxy`, `mod_proxy_http`, and `mod_proxy_wstunnel` are enabled as required by the hosting layout.
 - [ ] Confirm the effective document root uses the deployed `.htaccess` policy.
 - [ ] Apply the HTML routing rules documented in `docs/runbooks/csp_nonce_apache_routing.md`.
-- [ ] Confirm known page routes such as `/signoff/course`, `/signoff/course.html`, and `/signoff/` execute `public/html.php` instead of serving template files directly.
+- [ ] Preserve the live virtual host hardening. Verify that the root serves the app and that both legacy entrypoints, with and without the trailing slash, resolve with working root links and assets. After origin verification, retire the two temporary Cloudflare rules for the legacy entrypoints so the edge no longer generates old paths.
+- [ ] Confirm known page routes such as `/course`, `/course.html`, and `/` execute `public/html.php` instead of serving template files directly.
 - [ ] Confirm the HTML rewrite rules remain after API/realtime proxy rules and before the generic `public/` fallback.
-- [ ] Confirm `/signoff/templates/pages/index.html` returns 403/404 when the repository root is web-accessible.
-- [ ] Confirm `/signoff/api/config.php`, `/signoff/assets/`, and `/signoff/websocket/socket.io/` retain their existing handlers and do not route through `html.php`.
-- [ ] Confirm `/signoff/assets/vendor/socket.io/4.7.5/socket.io.min.js` returns HTTP 200 and a JavaScript content type.
-- [ ] Confirm `/signoff/vendor/autoload.php`, `/signoff/composer.json`, and `/signoff/composer.lock` return 403/404.
-- [ ] Confirm `/signoff/websocket/socket.io/?EIO=4&transport=polling` reaches the Python service.
+- [ ] Confirm `/templates/pages/index.html` returns 403/404 when the repository root is web-accessible.
+- [ ] Confirm `/api/config.php`, `/assets/`, and `/websocket/socket.io/` retain their existing handlers and do not route through `html.php`.
+- [ ] Confirm `/assets/vendor/socket.io/4.7.5/socket.io.min.js` returns HTTP 200 and a JavaScript content type.
+- [ ] Confirm `/vendor/autoload.php`, `/composer.json`, and `/composer.lock` return 403/404.
+- [ ] Confirm `/websocket/socket.io/?EIO=4&transport=polling` reaches the Python service.
 - [ ] Check that cPanel did not omit hidden `.htaccess` files during upload.
 
 ## Realtime Service
@@ -145,20 +146,20 @@ WS_SHARED_SECRET=<existing-secret> LMS_OUTBOX_ENABLED=0 python -c "import ws_ser
 ## Header and Asset Smoke Tests
 
 ```bash
-curl -sSI https://kairos.nixorcorporate.com/signoff/ \
+curl -sSI https://kairos.nixorcorporate.com/ \
   | tr -d '\r' \
   | grep -iE 'content-security-policy|cross-origin-opener-policy|x-content-type-options'
 
 curl -sS -D /tmp/kairos-csp-1.headers -o /tmp/kairos-csp-1.html \
-  https://kairos.nixorcorporate.com/signoff/
+  https://kairos.nixorcorporate.com/
 curl -sS -D /tmp/kairos-csp-2.headers -o /tmp/kairos-csp-2.html \
-  https://kairos.nixorcorporate.com/signoff/
+  https://kairos.nixorcorporate.com/
 grep -oi "'nonce-[^']*'" /tmp/kairos-csp-1.headers /tmp/kairos-csp-2.headers
 grep -o 'nonce="[^"]*"' /tmp/kairos-csp-1.html /tmp/kairos-csp-2.html
 
-curl -sSI https://kairos.nixorcorporate.com/signoff/assets/vendor/socket.io/4.7.5/socket.io.min.js
+curl -sSI https://kairos.nixorcorporate.com/assets/vendor/socket.io/4.7.5/socket.io.min.js
 
-curl -sS "https://kairos.nixorcorporate.com/signoff/websocket/socket.io/?EIO=4&transport=polling"
+curl -sS "https://kairos.nixorcorporate.com/websocket/socket.io/?EIO=4&transport=polling"
 ```
 
 The effective CSP must:
@@ -192,7 +193,7 @@ The effective CSP must:
       validation, disabled save state, focus return, and no mobile overflow.
 - [ ] Confirm Google remains the primary login and there is no public password registration action.
 - [ ] Enable local auth in staging and verify password login by username and email, generic wrong-credential errors,
-      pending activation guidance, and safe `/signoff/` return URLs.
+      pending activation guidance, and safe same-origin return URLs.
 - [ ] Verify activation, forgot-password, and reset-password pages at phone/tablet/desktop sizes in Light and Dark.
 - [ ] Confirm activation/reset fragments disappear from the address bar before API submission.
 - [ ] Confirm keyboard focus, labels, status announcements, disabled submit states, and password guidance.
@@ -273,7 +274,7 @@ Use non-production test accounts and do not alter real grades/submissions:
 ## Cache and Monitoring
 
 - [ ] Purge Cloudflare cache after deployment.
-- [ ] Clear any cPanel/server page cache for `/signoff/*`.
+- [ ] Clear any cPanel/server page cache for the Kairos hostname.
 - [ ] Monitor PHP error logs, Python service logs, CSP reports if configured, and HTTP 403/503 rates for at least one academic session.
 - [ ] Alert on elevated `storage_unavailable`, `storage_cleanup_pending`, and `storage_integrity_error` responses.
 
@@ -282,7 +283,7 @@ Use non-production test accounts and do not alter real grades/submissions:
 1. Restore the pre-deployment file backup, including both `.htaccess` files, `public/` entrypoints, and the prior HTML files.
 2. Restore the previous `ws_server.py` artifact and restart the Python service.
 3. Revert the Cloudflare route rules only if required by the previous release.
-4. Purge `/signoff/*` from Cloudflare and server caches.
+4. Purge affected Kairos URLs from Cloudflare and server caches.
 5. Re-run login, CSP, API, and WebSocket smoke checks.
 
 For a local-auth incident, set `LOCAL_AUTH_ENABLED=false` first. Preserve auth tables and audit history. Do not restore
@@ -303,6 +304,6 @@ rollback statement. Soft-deleted quiz/assignment records must not be mass-restor
 - [ ] Confirm no layout jumps occur when loading the avatar, and the initials fallback works when an image fails to load.
 - [ ] Verify that the `.is-loading` skeleton shimmers appear briefly on boot and disappear when the session is successfully resolved.
 - [ ] Confirm that settings/admin pages do not erase the user profile card during bootstrap/role checks.
-- [ ] Confirm that a 401 response from the session endpoints redirects to `/signoff/` safely while preserving query/hash params in sessionStorage.
+- [ ] Confirm that a 401 response from the session endpoints redirects to `/` safely while preserving query/hash params in sessionStorage.
 - [ ] **Negative test**: Set `sessionStorage.setItem('kairos:returnUrl', 'https://evil.com/signoff/')` then reload — verify that the redirect is blocked and the user lands on the home page instead of the external URL. Also test `//evil.com`, `/other/path`, and backslash variants (`/signoff/\\evil.com`, `/signoff/%5cevil.com`).
 - [ ] Verify theme contrast and readability of the user profile card across all six themes.

@@ -6,7 +6,7 @@ Use this page to access Kairos with Google or an Admin-invited password account.
 
 ## How to do it
 
-1. Open [Kairos](https://kairos.nixorcorporate.com/signoff/).
+1. Open [Kairos](https://kairos.nixorcorporate.com/).
 2. Select the Google sign-in option for your `@nixorcollege.edu.pk` account.
 3. If an Admin invited you to a password account, enter your username or email and password instead.
 4. Select **Sign in with password**.

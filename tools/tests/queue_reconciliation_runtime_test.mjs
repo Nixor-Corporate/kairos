@@ -10,7 +10,7 @@ function page(path, options = {}) {
     addEventListener: (name, fn) => { handlers[name] = fn; },
     hidden: false,
   };
-  const window = { location: { href: 'https://staging.example.test/signoff/room?room_id=3' } };
+  const window = { addEventListener() {}, location: { href: 'https://staging.example.test/room?room_id=3' } };
   const context = vm.createContext({ URL, URLSearchParams, document, window, console, ...options });
   vm.runInContext(fs.readFileSync(path, 'utf8'), context);
   return { context, handlers, run: source => vm.runInContext(source, context) };
@@ -57,6 +57,34 @@ session.context.fetch = async () => ({ ok: true, json: async () => [] });
 await assert.rejects(session.run('ensureLoggedIn()'), error => error.status === 401);
 session.context.fetch = async () => ({ ok: true, json: async () => ({ email: 'student@example.test' }) });
 assert.equal((await session.run('ensureLoggedIn()')).email, 'student@example.test');
+
+const dashboard = page('public/script.js', { console: { ...console, warn() {} } });
+dashboard.run(`
+  let views = [];
+  let sessionError = { hidden: true };
+  document.getElementById = id => id === 'dashboardSessionError' ? sessionError : null;
+  showSignin = () => views.push('signin');
+  showApp = () => views.push('dashboard');
+  stopNotifySSE = () => {};
+  refreshSessionCapabilities = async () => {};
+  renderCourseCards = async () => {};
+  startNotifySSE = () => {};
+  let resolveSession;
+  fetch = () => new Promise(resolve => { resolveSession = resolve; });
+  const pending = bootstrap();
+`);
+assert.equal(dashboard.run('views.length'), 0, 'a pending session check must not show sign-in');
+dashboard.run(`resolveSession({
+  ok: true, headers: { get: () => 'application/json' },
+  json: async () => ({ email: 'student@example.test', user_id: 17 })
+});`);
+await dashboard.run('pending');
+assert.equal(dashboard.run('views.join()'), 'dashboard');
+await dashboard.run('fetch = async () => ({ok: false, status: 503}); bootstrap()');
+assert.equal(dashboard.run('views.join()'), 'dashboard', 'a temporary session failure must not show sign-in');
+assert.equal(dashboard.run('sessionError.hidden'), false);
+await dashboard.run('fetch = async () => ({ok: false, status: 401}); bootstrap()');
+assert.equal(dashboard.run('views.join()'), 'dashboard,signin');
 
 const ta = page('public/js/ta.js');
 ta.run(`

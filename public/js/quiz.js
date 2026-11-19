@@ -807,7 +807,7 @@
     // ── Main load ──────────────────────────────────────────────
     async function loadPage() {
         if (!QUIZ_ID) {
-            LMS.renderAccessDenied($('quizAccessDenied'), 'No quiz specified. Please select a quiz from the Modules page.', COURSE_ID ? `./modules.html?course_id=${encodeURIComponent(COURSE_ID)}` : '/signoff/');
+            LMS.renderAccessDenied($('quizAccessDenied'), 'No quiz specified. Please select a quiz from the Modules page.', COURSE_ID ? `./modules.html?course_id=${encodeURIComponent(COURSE_ID)}` : '/');
             showPanel('quizAccessDenied');
             return;
         }

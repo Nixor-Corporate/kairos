@@ -29,7 +29,7 @@
 
   <!-- ── Sidebar ──────────────────────────────────────────── -->
   <aside class="k-sidebar hidden" id="kSidebar" role="navigation" aria-label="Main navigation">
-    <a class="k-sidebar__brand" href="/signoff/" data-home-link="true" aria-label="Kairos home">
+    <a class="k-sidebar__brand" href="/" data-home-link="true" aria-label="Kairos home">
       <div class="k-sidebar__logo">
         <img class="k-brand-badge" src="./images/logo.png" alt="" />
       </div>
@@ -54,15 +54,15 @@
       <!-- Role-specific nav items (hidden until caps loaded) -->
       <nav class="k-nav-group hidden" id="kNavRoles" aria-label="Role tools">
         <div class="k-nav-group__label">Tools</div>
-        <a class="k-nav-item hidden" id="navTA" href="/signoff/ta" data-nav-key="ta">
+        <a class="k-nav-item hidden" id="navTA" href="/ta" data-nav-key="ta">
           <span class="k-nav-item__icon" aria-hidden="true">🎓</span>
           <span class="k-nav-item__text">TA Dashboard</span>
         </a>
-        <a class="k-nav-item hidden" id="navManager" href="/signoff/manager" data-nav-key="manager">
+        <a class="k-nav-item hidden" id="navManager" href="/manager" data-nav-key="manager">
           <span class="k-nav-item__icon" aria-hidden="true">📋</span>
           <span class="k-nav-item__text">Manager</span>
         </a>
-        <a class="k-nav-item hidden" id="navAdmin" href="/signoff/admin" data-nav-key="admin">
+        <a class="k-nav-item hidden" id="navAdmin" href="/admin" data-nav-key="admin">
           <span class="k-nav-item__icon" aria-hidden="true">⚙️</span>
           <span class="k-nav-item__text">Admin</span>
         </a>
@@ -107,8 +107,11 @@
       <div class="k-page">
 
         <!-- Sign-in screen -->
-        <section id="signin" class="centerbox k-auth-card" aria-label="Sign in">
+        <div id="dashboardSessionPending" class="centerbox k-auth-card">
+          <p class="muted" role="status">Checking your session…</p>
           <p id="dashboardSessionError" class="k-notice-banner" role="alert" hidden>We could not check your session. Reload this page to try again.</p>
+        </div>
+        <section id="signin" class="centerbox k-auth-card hidden" aria-label="Sign in">
           <div class="k-card k-auth-panel">
             <div class="k-auth-heading">
               <div class="k-auth-logo">

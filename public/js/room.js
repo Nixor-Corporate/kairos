@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (err) {
     if (err.status === 401) {
       if (window.KairosIdentity) window.KairosIdentity.handleSessionExpired();
-      else window.location.replace('/signoff/');
+      else window.location.replace('/');
     } else {
       showErrorCard('We could not check your session. Reload this page to try again.');
     }
@@ -676,7 +676,7 @@ function showErrorCard(message) {
     <section class="card error-card">
       <h2>Room unavailable</h2>
       <p class="muted">${escapeHtml(message)}</p>
-      <p><a class="btn btn-primary" href="/signoff/">Return to dashboard</a></p>
+      <p><a class="btn btn-primary" href="/">Return to dashboard</a></p>
     </section>
   `;
 }

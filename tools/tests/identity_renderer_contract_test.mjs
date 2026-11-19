@@ -160,7 +160,7 @@ function loadThemeWithMockDom(overrides = {}) {
     // Valid relative path
     assert.equal(
         identity.validateReturnUrl('/signoff/assignment.html?course_id=2'),
-        '/signoff/assignment.html?course_id=2'
+        '/assignment.html?course_id=2'
     );
 
     // Invalid redirects

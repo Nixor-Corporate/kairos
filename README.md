@@ -1,8 +1,8 @@
 # Kairos
 
-Kairos is Nixor College’s production academic operations platform, combining queue workflows with a growing LMS experience under `/signoff/`.
+Kairos is Nixor College’s production academic operations platform, combining queue workflows with a growing LMS experience at the site root.
 
-- **Live URL (canonical):** https://kairos.nixorcorporate.com/signoff/
+- **Canonical URL:** https://kairos.nixorcorporate.com/
 - **Primary stack:** vanilla PHP API + vanilla JS/CSS frontend + Python WebSocket relay + MariaDB/MySQL
 - **Identity model:** Google OAuth with hosted-domain restriction plus optional admin-invited local accounts
 
@@ -29,7 +29,7 @@ Current/active domains include:
   - Authoritative for all state transitions.
   - Enforces authentication, RBAC, validation, and DB transactions.
 - **Frontend (`public/`)**
-  - Vanilla JS/CSS application shell under `/signoff/`.
+  - Vanilla JS/CSS application shell at the site root.
   - HTML templates live outside the webroot in `templates/pages/` and are rendered by `public/html.php` with a per-response CSP nonce.
   - Consumes REST endpoints and realtime events.
 - **Python WebSocket relay (`ws_server.py`)**
@@ -48,7 +48,7 @@ Kairos is currently deployed in a cPanel-style environment and code should be wr
 - Public entrypoints live under `public/`.
 - Relative URLs can break when moving between nested pages; prefer well-defined base paths.
 - Session/auth requests rely on same-origin credentials/cookie behavior.
-- OAuth callback and allowed origins must match deployed URL shape (`/signoff/`).
+- OAuth callback and allowed origins must match deployed root URL and allowed HTTPS origin.
 
 ---
 
@@ -214,7 +214,7 @@ php -S 0.0.0.0:8000 -t public
 ```
 
 Visit:
-- App home: `http://localhost:8000/signoff/`
+- App home: `http://localhost:8000/`
 
 ### 2) Start WebSocket relay
 
@@ -335,5 +335,5 @@ Kairos enforces a unified, authoritative shared identity renderer (`window.Kairo
 1. **Single Source of Truth**: Resolves the user session and capabilities once from `./api/me.php` and `./api/session_capabilities.php` and caches them in memory.
 2. **Skeleton Shimmer Loading**: On boot, displays a polished skeleton animation inside the avatar and user info blocks (driven by `.k-sidebar__user.is-loading` CSS rules) to prevent layout shifts.
 3. **Initials Fallback**: If the user's Google profile avatar fails to load or is missing, generates a high-contrast SVG containing their initials based on their name or email prefix.
-4. **Redirection Security**: Expired sessions (`401` status) trigger a safe redirect to `/signoff/` while preserving the return URL in sessionStorage, preventing open-redirect vulnerabilities.
+4. **Redirection Security**: Expired sessions (`401` status) trigger a safe redirect to `/` while preserving the return URL in sessionStorage, preventing open-redirect vulnerabilities.
 5. **DOM ID Normalization**: Unified across Settings, Admin, Manager, TA, Course, and Dashboard pages by mapping standard IDs (`kSidebarAvatar`, `kSidebarName`, `kSidebarRole`, `kLogoutBtn`).

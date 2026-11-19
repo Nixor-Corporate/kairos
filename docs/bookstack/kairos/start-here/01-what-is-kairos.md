@@ -6,7 +6,7 @@ Kairos is Nixor College's platform for courses, learning materials, assignments,
 
 ## How to do it
 
-1. Open [Kairos](https://kairos.nixorcorporate.com/signoff/).
+1. Open [Kairos](https://kairos.nixorcorporate.com/).
 2. Sign in with the login method provided to you.
 3. Choose a course from **My Courses**.
 4. Use the course menu to open **Home**, **Modules**, **Quizzes**, or **Assignments**.

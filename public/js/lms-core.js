@@ -129,7 +129,7 @@
     return raw || '/';
   }
 
-  const APP_BASE = '/signoff/';
+  const APP_BASE = '/';
   const REDIRECT_SENTINEL_KEY = 'kairos:lastRedirect';
   const REDIRECT_SENTINEL_WINDOW_MS = 2000;
   const GET_CACHE_TTL_MS = 12000;
@@ -154,12 +154,7 @@
     _featureCache.clear();
   }
 
-  function isSignoffHomePath(pathname) {
-    const normalized = normalizePathname(pathname);
-    return normalized === '/signoff' || normalized === '/signoff/index.html';
-  }
-
-  function redirectToSignoffHome() {
+  function redirectToHome() {
     if (!global.location) return;
     const currentPath = normalizePathname(global.location.pathname);
     const targetPath = normalizePathname(APP_BASE);
@@ -229,7 +224,7 @@
       try {
         const resp = await fetch(path, opts);
         if (resp.status === 401) {
-          redirectToSignoffHome();
+          redirectToHome();
           return { ok: false, status: 401, error: 'Unauthorized', data: null };
         }
         let data = null;
@@ -673,19 +668,18 @@
     },
 
     validateReturnUrl(raw) {
-      if (!raw || typeof raw !== 'string') return null;
+      if (typeof raw !== 'string') return null;
       const trimmed = raw.trim();
-      if (!trimmed.startsWith('/signoff/')) return null;
-      if (trimmed.includes('//')) return null;
-      if (trimmed.includes('\\')) return null;
-      if (trimmed.toLowerCase().includes('%5c')) return null;
+      if (!trimmed.startsWith('/') || trimmed.startsWith('//') || /[\\\x00-\x1f]|%5c/i.test(trimmed)) return null;
 
       try {
         const base = 'https://kairos.nixorcorporate.com';
         const parsed = new URL(trimmed, base);
         if (parsed.origin !== base) return null;
-        if (!parsed.pathname.startsWith('/signoff/')) return null;
-        return trimmed;
+        const path = parsed.pathname.replace(/^\/signoff(?=\/|$)/, '') || '/';
+        if (!/^\/(?:activate|admin|analytics|assignment|assignments|course|forgot-password|grading|index|lesson|manager|modules|projector|quizzes|quiz|resource-viewer|reset-password|room|settings|ta)(?:\.html)?\/?$/.test(path)) return null;
+        if (/^\/index(?:\.html)?\/?$/.test(path)) return null;
+        return path + parsed.search + parsed.hash;
       } catch (_) {
         return null;
       }
@@ -925,8 +919,19 @@
     if (global.themeInit) global.themeInit();
     // Load session
     const [me, caps] = await Promise.all([loadMe(), loadCaps()]);
-    if (!me || !me.email) {
-      redirectToSignoffHome();
+    if (Array.isArray(me) && me.length === 0) {
+      redirectToHome();
+      return;
+    }
+    if (!me?.email) {
+      const page = document.querySelector('.k-page');
+      if (page) {
+        const error = document.createElement('p');
+        error.className = 'k-notice-banner';
+        error.setAttribute('role', 'alert');
+        error.textContent = 'We could not check your session. Reload this page to try again.';
+        page.prepend(error);
+      }
       return;
     }
     // Update the user profile info on boot
@@ -937,7 +942,7 @@
     if (logoutBtn) {
       logoutBtn.addEventListener('click', async () => {
         await api('POST', './api/logout.php', {});
-        redirectToSignoffHome();
+        redirectToHome();
       });
     }
     return { me, caps };

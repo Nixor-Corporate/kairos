@@ -25,6 +25,8 @@ Use the Manager area to manage assigned courses, rooms, enrollment, progress, le
 
 Select **View** next to an enrolled student to see their recent sign-offs. A saved rating keeps the label it had when the TA recorded it.
 
+**Task overrides** configures existing progress tasks. The Manager dashboard has no controls for creating, renaming, or deleting sign-off tasks or categories.
+
 ## Download student progress
 
 Select **Download Excel workbook** in **Student progress**. The workbook covers the selected course, including current students and retained records for former students. The **Enrollments** sheet shows **Indeterminate** when the available records cannot establish past enrollment. See **About** for counts of records excluded for conflicting links. Keep the file in approved institutional storage.

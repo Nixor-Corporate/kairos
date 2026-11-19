@@ -2,7 +2,7 @@
   const STORAGE_KEY = 'kairos-theme';
   const SETTINGS_KEY = 'kairos-ui-settings';
   const LAST_DARK_KEY = 'kairos-last-dark-theme';
-  const HOME_PATH = '/signoff/';
+  const HOME_PATH = '/';
   const LEGACY_GRADIENT_VALUE = 'theme';
   const root = document.documentElement;
   const prefersDarkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
@@ -184,10 +184,11 @@
           const me = await meRes.json();
           const capsRaw = await capsRes.json();
 
-          if (!me || !me.email) {
+          if (Array.isArray(me) && me.length === 0) {
             this.handleSessionExpired();
             return null;
           }
+          if (!me?.email) throw new Error('Invalid session response');
 
           this.me = me;
 
@@ -240,7 +241,7 @@
             window.sessionStorage.setItem('kairos:returnUrl', fullUrl);
           }
         } catch (_) {}
-        window.location.replace('/signoff/');
+        window.location.replace(HOME_PATH);
       }
     },
 
@@ -335,19 +336,18 @@
     },
 
     validateReturnUrl(raw) {
-      if (!raw || typeof raw !== 'string') return null;
+      if (typeof raw !== 'string') return null;
       const trimmed = raw.trim();
-      if (!trimmed.startsWith('/signoff/')) return null;
-      if (trimmed.includes('//')) return null;
-      if (trimmed.includes('\\')) return null;
-      if (trimmed.toLowerCase().includes('%5c')) return null;
+      if (!trimmed.startsWith('/') || trimmed.startsWith('//') || /[\\\x00-\x1f]|%5c/i.test(trimmed)) return null;
 
       try {
         const base = 'https://kairos.nixorcorporate.com';
         const parsed = new URL(trimmed, base);
         if (parsed.origin !== base) return null;
-        if (!parsed.pathname.startsWith('/signoff/')) return null;
-        return trimmed;
+        const path = parsed.pathname.replace(/^\/signoff(?=\/|$)/, '') || '/';
+        if (!/^\/(?:activate|admin|analytics|assignment|assignments|course|forgot-password|grading|index|lesson|manager|modules|projector|quizzes|quiz|resource-viewer|reset-password|room|settings|ta)(?:\.html)?\/?$/.test(path)) return null;
+        if (/^\/index(?:\.html)?\/?$/.test(path)) return null;
+        return path + parsed.search + parsed.hash;
       } catch (_) {
         return null;
       }

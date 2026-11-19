@@ -60,7 +60,7 @@
         LMS.nav.setCourseContext(currentCourseId, courseName, currentCourse);
         LMS.nav.setActive('modules');
         LMS.nav.setBreadcrumb([
-            { name: 'All Courses', href: '/signoff/' },
+            { name: 'All Courses', href: '/' },
             { name: courseName, href: `./course.html?course_id=${encodeURIComponent(currentCourseId)}` },
             { name: 'Modules', href: `./modules.html?course_id=${encodeURIComponent(currentCourseId)}` },
             { name: resourceTitle },
@@ -502,7 +502,7 @@
 
     async function loadPage() {
         if (!RESOURCE_ID) {
-            LMS.renderAccessDenied($('resourceAccessDenied'), 'No resource specified.', '/signoff/');
+            LMS.renderAccessDenied($('resourceAccessDenied'), 'No resource specified.', '/');
             hideEl('resourceSkeleton');
             showEl('resourceAccessDenied');
             return;

@@ -76,7 +76,7 @@
         form.reset();
         window.KairosAuth.setStatus(status, result.message, 'success');
         const link = document.createElement('a');
-        link.href = '/signoff/';
+        link.href = '/';
         link.className = 'btn btn-primary k-auth-submit';
         link.textContent = 'Continue to login';
         form.appendChild(link);

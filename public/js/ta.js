@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (logout) {
     logout.addEventListener('click', async () => {
       try { await fetch('./api/logout.php', { method: 'POST', credentials: 'same-origin' }); }
-      finally { window.location.href = '/signoff/'; }
+      finally { window.location.href = '/'; }
     });
   }
   const courseSelect = document.getElementById('taCourseSelect');

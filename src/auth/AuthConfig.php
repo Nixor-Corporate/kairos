@@ -79,7 +79,8 @@ final class AuthConfig
         }
 
         $origin = rtrim((string)\env('PUBLIC_APP_ORIGIN', \env('APP_ORIGIN', '')), '/');
-        $basePath = '/' . trim((string)\env('APP_BASE_PATH', '/signoff/'), '/') . '/';
+        $configuredPath = trim((string)\env('APP_BASE_PATH', '/'), '/');
+        $basePath = in_array($configuredPath, ['', 'signoff'], true) ? '/' : '/' . $configuredPath . '/';
         if ($origin === '' || !filter_var($origin, FILTER_VALIDATE_URL)) {
             if ($enabled) {
                 throw new \RuntimeException('PUBLIC_APP_ORIGIN or APP_ORIGIN must be configured for local authentication.');

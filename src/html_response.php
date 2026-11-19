@@ -98,9 +98,13 @@ function kairos_render_html_template(string $page, string $nonce): string
         throw new RuntimeException('Unable to load HTML template.');
     }
 
+    if (preg_match('~^/signoff(?:/|[?]|$)~', $_SERVER['REQUEST_URI'] ?? '')) {
+        $html = str_replace('<head>', '<head>' . PHP_EOL . '  <base href="/">', $html);
+    }
+
     if (in_array($page, kairos_course_pages(), true)) {
         $speculationRules = <<<'HTML'
-    <script data-cfasync="false" type="speculationrules" nonce="{{CSP_NONCE}}">{"prefetch":[{"source":"document","where":{"and":[{"href_matches":"/signoff/*"},{"selector_matches":"a[data-lms-nav], #kNavCourse a, .k-breadcrumb a"}]},"eagerness":"moderate"}]}</script>
+    <script data-cfasync="false" type="speculationrules" nonce="{{CSP_NONCE}}">{"prefetch":[{"source":"document","where":{"and":[{"href_matches":"/*"},{"selector_matches":"a[data-lms-nav], #kNavCourse a, .k-breadcrumb a"}]},"eagerness":"moderate"}]}</script>
 HTML;
         $html = str_replace('</head>', $speculationRules . PHP_EOL . '</head>', $html);
         $html = str_replace(

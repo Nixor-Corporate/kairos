@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  const COURSE_ROUTE = /^\/signoff\/(?:course|modules|lesson|resource-viewer|quizzes|quiz|assignments|assignment|grading|analytics)(?:\.html)?$/;
+  const COURSE_ROUTE = /^\/(?:course|modules|lesson|resource-viewer|quizzes|quiz|assignments|assignment|grading|analytics)(?:\.html)?$/;
   let progress = null;
 
   function eligibleLink(event) {

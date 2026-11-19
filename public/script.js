@@ -466,6 +466,7 @@ function handleTaAcceptEvent(message) {
 }
 
 function showSignin() {
+  document.getElementById('dashboardSessionPending')?.classList.add('hidden');
   const sessionError = document.getElementById('dashboardSessionError');
   if (sessionError) sessionError.hidden = true;
   applySessionCapabilities(null);
@@ -488,6 +489,7 @@ function showSignin() {
 }
 
 function showApp() {
+  document.getElementById('dashboardSessionPending')?.classList.add('hidden');
   const signin = document.getElementById('signin');
   if (signin) signin.classList.add('hidden');
   const userbar = document.getElementById('userbar');
@@ -598,6 +600,7 @@ function renderGoogleButton() {
 }
 
 async function bootstrap() {
+  let authenticated = false;
   try {
     const r = await fetch('./api/me.php', { credentials: 'same-origin' });
     if (!r.ok) throw Object.assign(new Error('Unable to check session'), { status: r.status });
@@ -612,6 +615,7 @@ async function bootstrap() {
       return;
     }
     if (!me?.email) throw new Error('Invalid session response');
+    authenticated = true;
 
     // Fill userbar (old + new selectors) using KairosIdentity if available
     if (window.KairosIdentity) {
@@ -669,12 +673,22 @@ async function bootstrap() {
     // startSSE();
     startNotifySSE();
   } catch (e) {
-    console.warn('Dashboard session check failed', e);
+    console.warn('Dashboard initialization failed', e);
+    if (authenticated) {
+      showApp();
+      return;
+    }
     selfUserId = null;
     stopNotifySSE();
-    showSignin();
+    if (e.status === 401) {
+      showSignin();
+      return;
+    }
     const sessionError = document.getElementById('dashboardSessionError');
-    if (sessionError) sessionError.hidden = e.status === 401;
+    if (sessionError) {
+      sessionError.hidden = false;
+      document.getElementById('dashboardSessionPending')?.querySelector('[role="status"]')?.classList.add('hidden');
+    }
   }
 }
 
@@ -682,7 +696,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const startApp = () => {
     updateAllowedDomainCopy();
     bindPasswordLogin();
-    renderGoogleButton();
     bootstrap();
   };
 
@@ -736,7 +749,6 @@ async function performLogout() {
   setRoomsNavState(false);
     selectedRoomId = null;
     showSignin();
-    renderGoogleButton();
   }
 }
 const _logoutBtn = document.getElementById('logoutBtn');
@@ -1034,7 +1046,7 @@ async function showCourse(courseId) {
       const card = document.createElement('div');
       card.className = 'room-card';
       const safeRoomId = String(room.room_id ?? '');
-      const url = `/signoff/room?course_id=${encodeURIComponent(selectedCourse)}&room_id=${encodeURIComponent(safeRoomId)}`;
+      const url = `/room?course_id=${encodeURIComponent(selectedCourse)}&room_id=${encodeURIComponent(safeRoomId)}`;
 
       const header = document.createElement('div');
       header.className = 'flex align-center gap-10';
@@ -1067,7 +1079,7 @@ async function showCourse(courseId) {
     if (card && !e.target.closest('button') && !insideQueues) {
       const roomId = card.dataset.roomId;
       if (roomId) {
-        window.location.href = `/signoff/room?room_id=${encodeURIComponent(roomId)}`;
+        window.location.href = `/room?room_id=${encodeURIComponent(roomId)}`;
         return;
       }
     }

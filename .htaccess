@@ -9,10 +9,6 @@ RewriteRule ^composer\.(json|lock)$ - [F,L]
 RewriteRule ^(AGENTS|README|CHANGES_KAIROS|DESIGN_GUIDELINES|THEME_GUIDELINES|UI_UX_CHECKLIST|SECURITY_AUDIT|SECURITY_DEPLOYMENT_CHECKLIST)\.md$ - [F,L]
 RewriteRule \.(bak|old|orig|tmp|temp|swp|swo|log|sql|ini|conf|ya?ml|lock|dist|backup|zip|tar|tgz|gz)$ - [F,L]
 
-# Canonical root entrypoint: send site root to /signoff/ once.
-RewriteCond %{REQUEST_URI} ^/$
-RewriteRule ^$ /signoff/ [R=302,L]
-
 # --- WebSocket reverse proxy (must be before RewriteBase/other rules) ---
 
 # Proxy Socket.IO realtime traffic at the same path advertised by api/config.php and api/me.php.
@@ -31,18 +27,18 @@ RewriteRule ^ws$ ws://127.0.0.1:8090/ws [P,L]
 # The broker is called directly over loopback by PHP's emitter.
 RewriteRule ^(?:signoff/)?(?:public/)?emit/?$ - [F,END,NC]
 
-RewriteBase /signoff/
+RewriteBase /
 
-# If someone hits /signoff/public/... force clean URL without /public
-RewriteCond %{THE_REQUEST} \s/+signoff/public/ [NC]
-RewriteRule ^public/(.*)$ $1 [R=301,L]
+# Serve saved links beneath the old mount without issuing a redirect.
+RewriteRule ^signoff/(.+)$ $1 [L]
 
-# API: map /signoff/api/* -> /signoff/public/api/*
+# API: map root API requests to the public entrypoints.
 RewriteRule ^api/(.*)$ public/api/$1 [L]
 
 # HTML pages are templates outside the public webroot. Route only the known
 # page names through PHP so every HTML response gets a fresh CSP nonce.
 RewriteRule ^$ public/html.php?page=index [END,QSA]
+RewriteRule ^signoff/?$ public/html.php?page=index [END,QSA]
 RewriteRule ^(activate|admin|analytics|assignment|assignments|course|forgot-password|grading|index|lesson|manager|modules|projector|quiz|quizzes|resource-viewer|reset-password|room|settings|ta)(?:\.html)?/?$ public/html.php?page=$1 [END,QSA]
 
 # Fallback: if not a real file/dir, serve from /public

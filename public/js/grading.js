@@ -330,7 +330,7 @@
     // ── Main load ──────────────────────────────────────────────
     async function loadPage() {
         if (!COURSE_ID) {
-            LMS.renderAccessDenied($('gradingAccessDenied').querySelector('div'), 'No course specified.', '/signoff/');
+            LMS.renderAccessDenied($('gradingAccessDenied').querySelector('div'), 'No course specified.', '/');
             showEl('gradingAccessDenied'); hideEl('gradingSkeleton'); return;
         }
 
