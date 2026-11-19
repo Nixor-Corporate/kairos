@@ -22,7 +22,7 @@ if (!rbac_can($pdo, $user, 'view_course', $courseId)) {
 }
 
 try {
-    $stmt = $pdo->prepare('SELECT category_id, name FROM progress_category WHERE course_id = ? ORDER BY name');
+    $stmt = $pdo->prepare('SELECT category_id, name FROM progress_category WHERE course_id = ? AND archived_at IS NULL ORDER BY name');
     $stmt->execute([$courseId]);
     $categories = $stmt->fetchAll();
     $stmt = $pdo->prepare(
@@ -30,7 +30,7 @@ try {
          FROM progress_details d JOIN progress_category c ON c.category_id = d.category_id
          LEFT JOIN progress p ON p.detail_id = d.detail_id AND p.user_id = ?
          LEFT JOIN progress_status ps ON ps.progress_status_id = p.status_id
-         WHERE c.course_id = ? ORDER BY d.name'
+         WHERE c.course_id = ? AND c.archived_at IS NULL AND d.archived_at IS NULL ORDER BY d.name'
     );
     $stmt->execute([$user['user_id'], $courseId]);
     $details = [];

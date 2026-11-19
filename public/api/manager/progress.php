@@ -48,7 +48,7 @@ function fetch_course_progress_summary(PDO $pdo, int $courseId): array
     if (table_exists($pdo, 'progress_details') && table_exists($pdo, 'progress_category')) {
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM progress_details d
                                JOIN progress_category c ON c.category_id = d.category_id
-                               WHERE c.course_id = :cid');
+                               WHERE c.course_id = :cid AND c.archived_at IS NULL AND d.archived_at IS NULL');
         $stmt->execute([':cid' => $courseId]);
         $totalDetails = (int)$stmt->fetchColumn();
     }
@@ -63,7 +63,7 @@ function fetch_course_progress_summary(PDO $pdo, int $courseId): array
                 JOIN progress_details d ON d.detail_id = p.detail_id
                 JOIN progress_category c ON c.category_id = d.category_id
                 LEFT JOIN progress_status ps ON ps.progress_status_id = p.status_id
-                WHERE c.course_id = :cid
+                WHERE c.course_id = :cid AND c.archived_at IS NULL AND d.archived_at IS NULL
                 GROUP BY p.user_id';
         $stmt = $pdo->prepare($sql);
         $stmt->execute([':cid' => $courseId]);
@@ -124,7 +124,7 @@ function fetch_student_progress(PDO $pdo, int $courseId, int $studentId): array
         ];
     }
 
-    $catStmt = $pdo->prepare('SELECT CAST(category_id AS UNSIGNED) AS category_id, name
+    $catStmt = $pdo->prepare('SELECT CAST(category_id AS UNSIGNED) AS category_id, name, archived_at
                               FROM progress_category
                               WHERE course_id = :cid
                               ORDER BY name');
@@ -133,7 +133,7 @@ function fetch_student_progress(PDO $pdo, int $courseId, int $studentId): array
 
     $detailStmt = $pdo->prepare('SELECT CAST(d.detail_id AS UNSIGNED) AS detail_id,
                                         CAST(d.category_id AS UNSIGNED) AS category_id,
-                                        d.name
+                                        d.name, d.archived_at
                                  FROM progress_details d
                                  JOIN progress_category c ON c.category_id = d.category_id
                                  WHERE c.course_id = :cid

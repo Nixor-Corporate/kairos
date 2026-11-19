@@ -2,6 +2,8 @@
 
 ## Course policy and lifecycle
 
+**Manage sign-off tasks** creates, renames, and archives categories and tasks in the selected course. Catalog changes record the actor and names. Archived definitions remain available in manager progress details and exports, and are removed from active student and TA task lists and roster totals. Archiving a category gives its children the same effective visibility.
+
 In **Manager → Student progress → Sign-off requirements**, an assigned manager or admin can independently require a rating, a comment, or both. The initial course policy requires neither. Under **Task overrides**, each requirement and the ordered rating choices inherit independently. Select a task to see its effective settings. **Reset to course defaults** restores all three inherited settings. Course default changes reach inheriting tasks at once. Explicit overrides and prior events retain their saved values. The existing `progress_details` and `progress_category` relationship is the completion boundary. Stop Serving ends the queue assignment separately.
 
 Choices are ordered labels. Integers, decimal labels, and descriptive labels are all supported. The service accepts up to 50 choices per course and 120 characters per label. Active labels must be distinct. At least one active choice is required when rating is mandatory. Use deactivation to preserve saved option IDs. Manager saves compare the policy revision and record each changed configuration and actor in `signoff_policy_history`.
@@ -31,7 +33,7 @@ The Enrollments sheet deduplicates by course and student ID. **Current** takes p
 | --- | --- | --- |
 | About | One row per workbook attribute | Course scope, handling and interpretation |
 | Enrollments | Course ID + Student ID | Course name and code, student name, enrollment status |
-| Tasks | Task ID, Category ID, Course ID | Task and category labels |
+| Tasks | Task ID, Category ID, Course ID | Task and category labels, task and category archive dates |
 | Task progress | Course ID + Student ID + Task ID | Current status, created and updated times. Missing rows indicate no recorded status |
 | Sign-off history | Event ID, Student ID, Task ID, Staff ID | Actor name, prior/current status, course policy revision, option ID and historical label, comment, timestamp, task policy revision and task-choice position when present |
 | Serving sessions | Serving ID, Queue ID, Student ID, TA ID | TA name and service timestamps. The export includes records still retained by existing queue history |

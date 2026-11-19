@@ -456,6 +456,28 @@
             <section class="k-card k-panel-gap"><div class="k-card__header"><h2 class="k-card__title">Rooms</h2><button class="btn btn-primary btn-sm">New room</button></div><div class="k-card__body"><div class="fixture-row"><strong>Lab 2</strong><span class="k-status k-status--success">Open</span></div></div></section>
           </div><section class="k-card"><div class="k-card__header"><h2 class="k-card__title">Enrollment</h2></div><div class="k-card__body"><input class="k-input" placeholder="Search by name or email" /><button class="btn btn-primary" style="margin-top:10px">Search</button><h3>Current roster</h3><div class="fixture-row"><span>Student One</span><button class="btn btn-ghost btn-sm">Remove</button></div><div class="fixture-row"><span>Student Two</span><button class="btn btn-ghost btn-sm">Remove</button></div></div></section></div>` });
       },
+      'manager-signoff-catalog'() {
+        shell({ role: 'Manager', active: 'Manager', title: 'Student progress', content: `
+          <div class="k-page-header"><h1 class="k-page-header__title">Computer Science 101 progress</h1><button class="btn btn-ghost">← Back</button></div>
+          <section class="k-card"><div class="k-card__body">
+            <details open class="signoff-settings"><summary>Manage sign-off tasks</summary>
+              <p>Archived items are removed from active progress. Existing sign-offs and progress records are kept.</p>
+              <fieldset><legend>Sign-off catalog</legend>
+                <form class="k-panel-gap">
+                  <div class="field"><label for="fixtureCategory">Category</label><select class="input" id="fixtureCategory"><option>Lab 2</option></select></div>
+                  <div class="field"><label for="fixtureCategoryName">Category name</label><input class="input" id="fixtureCategoryName" value="Lab 2"></div>
+                  <div class="k-toolbar"><button class="btn btn-primary">Rename category</button><button class="btn btn-danger" type="button">Archive category</button></div>
+                </form>
+                <form class="k-panel-gap">
+                  <div class="field"><label for="fixtureTask">Task in this category</label><select class="input" id="fixtureTask"><option>Debugging exercise</option></select></div>
+                  <div class="field"><label for="fixtureTaskName">Task name</label><input class="input" id="fixtureTaskName" value="Debugging exercise"></div>
+                  <div class="k-toolbar"><button class="btn btn-primary">Rename task</button><button class="btn btn-danger" type="button">Archive task</button></div>
+                </form>
+              </fieldset>
+            </details>
+            <details class="signoff-settings k-panel-gap"><summary>Sign-off requirements</summary></details>
+          </div></section>` });
+      },
       'manager-modules'() {
         shell({ role: 'Manager', active: 'Modules', title: 'Modules', courseNav: true, content: `
           <div class="k-page-header"><div><h1 class="k-page-header__title">Modules</h1><p class="k-page-header__subtitle">Computer Science 101</p></div><div><button class="btn btn-primary">New Module</button> <button class="btn btn-ghost">Collapse All</button></div></div>

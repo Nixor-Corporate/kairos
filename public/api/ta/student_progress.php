@@ -30,7 +30,7 @@ $studentName = $studentStmt->fetchColumn();
 // Fetch categories for the course
 $catStmt = $pdo->prepare('SELECT CAST(category_id AS UNSIGNED) AS category_id, name
                            FROM progress_category
-                           WHERE course_id = :cid
+                           WHERE course_id = :cid AND archived_at IS NULL
                            ORDER BY name');
 $catStmt->execute([':cid' => $courseId]);
 $categories = $catStmt->fetchAll() ?: [];
@@ -41,7 +41,7 @@ $detailStmt = $pdo->prepare('SELECT CAST(d.detail_id AS UNSIGNED) AS detail_id,
                                     d.name
                              FROM progress_details d
                              JOIN progress_category c ON c.category_id = d.category_id
-                             WHERE c.course_id = :cid
+                             WHERE c.course_id = :cid AND c.archived_at IS NULL AND d.archived_at IS NULL
                              ORDER BY d.name');
 $detailStmt->execute([':cid' => $courseId]);
 $detailsRows = $detailStmt->fetchAll() ?: [];
@@ -57,7 +57,7 @@ $statusStmt = $pdo->prepare('SELECT d.detail_id,
                              JOIN progress_category c ON c.category_id = d.category_id
                              LEFT JOIN progress p ON p.detail_id = d.detail_id AND p.user_id = :uid
                              LEFT JOIN progress_status ps ON ps.progress_status_id = p.status_id
-                             WHERE c.course_id = :cid');
+                             WHERE c.course_id = :cid AND c.archived_at IS NULL AND d.archived_at IS NULL');
 $statusStmt->execute([':uid' => $studentId, ':cid' => $courseId]);
 $statuses = [];
 foreach ($statusStmt->fetchAll() as $row) {

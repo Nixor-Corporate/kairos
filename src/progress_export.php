@@ -18,8 +18,9 @@ function export_progress_workbook(PDO $pdo, int $courseId, string $path): void
              FROM roster e LEFT JOIN users u USING (user_id) JOIN courses c ON c.course_id = ? ORDER BY e.user_id",
         ],
         'Tasks' => [
-            ['Course ID', 'Category ID', 'Category', 'Task ID', 'Task'],
-            'SELECT c.course_id, c.category_id, c.name AS category_name, d.detail_id, d.name AS task_name
+            ['Course ID', 'Category ID', 'Category', 'Task ID', 'Task', 'Category archived at' => 'date', 'Task archived at' => 'date'],
+            'SELECT c.course_id, c.category_id, c.name AS category_name, d.detail_id, d.name AS task_name,
+                    c.archived_at, d.archived_at
              FROM progress_details d JOIN progress_category c ON c.category_id = d.category_id
              WHERE c.course_id = ? ORDER BY c.category_id, d.detail_id',
         ],

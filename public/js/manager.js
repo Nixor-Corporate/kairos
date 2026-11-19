@@ -233,7 +233,113 @@ async function openProgressView() {
   setBreadcrumbs(`Course #${activeCourseId} · Progress`);
   showView('viewProgress');
   document.getElementById('downloadProgressExcel').onclick = downloadProgressWorkbook;
-  await Promise.all([loadProgressSummary(), loadSignoffRequirements(activeCourseId)]);
+  await Promise.all([loadProgressSummary(), loadSignoffRequirements(activeCourseId), loadSignoffCatalog(activeCourseId)]);
+}
+
+async function loadSignoffCatalog(courseId) {
+  const fields = document.getElementById('managerCatalogFields');
+  if (!fields) return;
+  const status = document.getElementById('managerCatalogStatus');
+  const category = document.getElementById('managerCatalogCategory');
+  const task = document.getElementById('managerCatalogTask');
+  const categoryForm = document.getElementById('managerCategoryForm');
+  const taskForm = document.getElementById('managerCatalogTaskForm');
+  const categoryName = document.getElementById('managerCategoryName');
+  const taskName = document.getElementById('managerCatalogTaskName');
+  const archiveCategory = document.getElementById('managerArchiveCategory');
+  const archiveTask = document.getElementById('managerArchiveTask');
+  const endpoint = './api/manager/signoff_catalog.php';
+  const request = Symbol();
+  fields.catalogRequest = request;
+  const current = () => activeCourseId === courseId && fields.catalogRequest === request;
+  let catalog;
+  const selectedCategory = () => catalog.categories.find(item => String(item.category_id) === category.value);
+  const selectedTask = () => catalog.tasks.find(item => String(item.detail_id) === task.value);
+
+  task.onchange = () => {
+    const item = selectedTask();
+    taskName.value = item?.name || '';
+    taskForm.querySelector('[type="submit"]').textContent = item ? 'Rename task' : 'Add task';
+    archiveTask.classList.toggle('hidden', !item);
+  };
+  category.onchange = () => {
+    const item = selectedCategory();
+    categoryName.value = item?.name || '';
+    categoryForm.querySelector('[type="submit"]').textContent = item ? 'Rename category' : 'Add category';
+    archiveCategory.classList.toggle('hidden', !item);
+    taskForm.hidden = !item;
+    task.replaceChildren(new Option('New task', ''), ...catalog.tasks
+      .filter(entry => String(entry.category_id) === category.value)
+      .map(entry => new Option(entry.name, entry.detail_id)));
+    task.onchange();
+  };
+
+  const reload = async (categoryId = '', detailId = '') => {
+    const data = await apiGet(`${endpoint}?course_id=${encodeURIComponent(courseId)}`);
+    if (!current()) return;
+    catalog = data;
+    category.replaceChildren(new Option('New category', ''), ...catalog.categories
+      .map(item => new Option(item.name, item.category_id)));
+    category.value = String(categoryId);
+    if (category.selectedIndex === -1) category.value = '';
+    category.onchange();
+    task.value = String(detailId);
+    if (task.selectedIndex === -1) task.value = '';
+    task.onchange();
+  };
+
+  const save = async (kind, archive = false) => {
+    if (!current() || fields.disabled) return;
+    const group = selectedCategory();
+    const item = kind === 'category' ? group : selectedTask();
+    const action = archive ? 'archive' : (item ? 'rename' : 'create');
+    if (archive && (!item || !confirm(kind === 'category'
+      ? `Archive “${item.name}” and remove its tasks from active progress? Existing records will be kept.`
+      : `Archive “${item.name}”? Existing records will be kept.`))) return;
+
+    fields.disabled = true;
+    status.textContent = 'Saving sign-off catalog…';
+    try {
+      const saved = await apiPost(endpoint, {
+        course_id: courseId, kind, action, category_id: group?.category_id,
+        detail_id: kind === 'task' ? item?.detail_id : undefined,
+        expected_name: item?.name,
+        name: kind === 'category' ? categoryName.value : taskName.value,
+      });
+      if (!current()) return;
+      status.textContent = archive ? 'Item archived. Existing records were kept.' : 'Sign-off catalog saved.';
+      await Promise.all([loadProgressSummary(), loadSignoffRequirements(courseId)]);
+      try {
+        await reload(archive && kind === 'category' ? '' : saved.category_id, archive ? '' : saved.detail_id ?? '');
+      } catch (_) {
+        if (current()) status.textContent = 'Change saved. Reopen Student progress to refresh the editor.';
+        return;
+      }
+      if (current()) fields.disabled = false;
+    } catch (error) {
+      if (!current()) return;
+      status.textContent = error.message;
+      if (error.status === 404 || error.status === 409) {
+        try { await reload(group?.category_id ?? '', kind === 'task' ? item?.detail_id ?? '' : ''); }
+        catch (_) { return; }
+      }
+      if (current()) fields.disabled = false;
+    }
+  };
+  categoryForm.onsubmit = event => { event.preventDefault(); return save('category'); };
+  taskForm.onsubmit = event => { event.preventDefault(); return save('task'); };
+  archiveCategory.onclick = () => save('category', true);
+  archiveTask.onclick = () => save('task', true);
+  fields.disabled = true;
+  status.textContent = 'Loading sign-off catalog…';
+  try {
+    await reload();
+    if (!current()) return;
+    fields.disabled = false;
+    status.textContent = '';
+  } catch (error) {
+    if (current()) status.textContent = error.message;
+  }
 }
 
 async function downloadProgressWorkbook() {
@@ -500,6 +606,7 @@ function bindTaskSignoffSettings(courseId, tasks, isCurrent) {
 
 async function loadProgressSummary() {
   if (!activeCourseId) return;
+  const courseId = activeCourseId;
   const tbody = document.querySelector('#progressTable tbody');
   const meta = document.getElementById('progressCourseMeta');
   const title = document.getElementById('progressTitle');
@@ -513,9 +620,9 @@ async function loadProgressSummary() {
     tbody.innerHTML = '<tr><td colspan="5" class="muted">Loading progress…</td></tr>';
   }
   try {
-    const data = await apiGet(`./api/manager/progress.php?course_id=${encodeURIComponent(activeCourseId)}`);
+    const data = await apiGet(`./api/manager/progress.php?course_id=${encodeURIComponent(courseId)}`);
     const roster = Array.isArray(data?.students) ? data.students : [];
-    if (!tbody) return;
+    if (!tbody || courseId !== activeCourseId) return;
     if (!roster.length) {
       tbody.innerHTML = '<tr><td colspan="5" class="muted">No enrolled students.</td></tr>';
       return;
@@ -543,7 +650,7 @@ async function loadProgressSummary() {
       await openProgressModal(uid);
     };
   } catch (err) {
-    if (!tbody) return;
+    if (!tbody || courseId !== activeCourseId) return;
     if (err?.status === 403) {
       return;
     }
@@ -588,7 +695,7 @@ async function openProgressModal(userId) {
           const status = statuses?.[detail.detail_id] || 'None';
           return `
             <div class="progress-detail">
-              <div>${escapeHtml(detail.name || '')}</div>
+              <div>${escapeHtml(detail.name || '')}${cat.archived_at || detail.archived_at ? ' (archived)' : ''}</div>
               <div class="progress-status">${escapeHtml(status)}</div>
             </div>
           `;
@@ -596,7 +703,7 @@ async function openProgressModal(userId) {
         : '<div class="muted">No details yet.</div>';
       return `
         <div class="progress-category">
-          <h4>${escapeHtml(cat.name || '')}</h4>
+          <h4>${escapeHtml(cat.name || '')}${cat.archived_at ? ' (archived)' : ''}</h4>
           <div class="progress-detail-list">${detailHtml}</div>
         </div>
       `;

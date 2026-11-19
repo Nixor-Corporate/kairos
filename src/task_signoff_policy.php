@@ -6,7 +6,8 @@ function signoff_task_catalog(PDO $pdo, int $courseId): array
     $stmt = $pdo->prepare(
         'SELECT d.detail_id, d.name, c.name AS category
          FROM progress_details d JOIN progress_category c USING (category_id)
-         WHERE c.course_id = ? ORDER BY c.name, d.name, d.detail_id'
+         WHERE c.course_id = ? AND c.archived_at IS NULL AND d.archived_at IS NULL
+         ORDER BY c.name, d.name, d.detail_id'
     );
     $stmt->execute([$courseId]);
     return $stmt->fetchAll();
@@ -21,7 +22,7 @@ function signoff_task_overrides(PDO $pdo, int $courseId, ?int $detailId = null):
               ON latest.detail_id = h.detail_id AND latest.revision = h.revision
             JOIN progress_details d ON d.detail_id = h.detail_id
             JOIN progress_category c ON c.category_id = d.category_id AND c.course_id = h.course_id
-            WHERE h.course_id = ?';
+            WHERE h.course_id = ? AND c.archived_at IS NULL AND d.archived_at IS NULL';
     $stmt = $pdo->prepare($sql);
     $stmt->execute($detailId === null ? [$courseId, $courseId] : [$courseId, $detailId, $courseId]);
     $overrides = [];
@@ -93,7 +94,7 @@ function signoff_task_settings(PDO $pdo, int $courseId, int $detailId, ?array $c
 {
     $stmt = $pdo->prepare(
         'SELECT 1 FROM progress_details d JOIN progress_category c USING (category_id)
-         WHERE d.detail_id = ? AND c.course_id = ?'
+         WHERE d.detail_id = ? AND c.course_id = ? AND c.archived_at IS NULL AND d.archived_at IS NULL'
     );
     $stmt->execute([$detailId, $courseId]);
     if (!$stmt->fetchColumn()) {

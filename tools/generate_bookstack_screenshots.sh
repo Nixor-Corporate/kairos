@@ -30,6 +30,7 @@ views=(
   grading-workspace
   manager-dashboard
   manager-progress
+  manager-signoff-catalog
   manager-course-settings
   manager-modules
   assignment-editor

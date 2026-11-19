@@ -345,6 +345,14 @@
   cursor: pointer;
 }
 
+.signoff-settings fieldset {
+  min-width: 0;
+}
+
+.signoff-settings select {
+  max-width: 100%;
+}
+
 .signoff-settings label {
   display: inline-flex;
   align-items: center;

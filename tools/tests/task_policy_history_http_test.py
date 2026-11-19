@@ -90,6 +90,45 @@ reset = configure(181)
 assert reset['effective']['comment_required'] and reset['effective']['options'] == course['options']
 assert reset['task_revision'] > custom['task_revision']
 
+catalog_route = 'manager/signoff_catalog.php'
+
+def change(kind, action, expected=200, client=manager, **fields):
+    return req(client, catalog_route, expected, {
+        'course_id': 111, 'kind': kind, 'action': action, **fields,
+    })
+
+req(student, catalog_route + '?course_id=111', 403)
+req(manager, catalog_route + '?course_id=112', 403)
+change('category', 'create', 403, client=ta, name='TA cannot create')
+change('category', 'create', 422, name='  ')
+change('task', 'create', 404, category_id=122, name='Outside course')
+change('task', 'archive', 404, category_id=121, detail_id=183, expected_name='Foreign Task')
+category = change('category', 'create', name='Catalog QA')['category_id']
+change('category', 'create', 409, name='Catalog QA')
+change('category', 'rename', 409, category_id=category, name='Stale', expected_name='Older name')
+change('category', 'rename', category_id=category, name='Catalog QA renamed', expected_name='Catalog QA')
+individually_archived = change('task', 'create', category_id=category, name='Task to archive')['detail_id']
+archived_by_category = change('task', 'create', category_id=category, name='Task under archive')['detail_id']
+change('task', 'rename', category_id=category, detail_id=individually_archived,
+       name='Renamed task', expected_name='Task to archive')
+complete(individually_archived, task(individually_archived), comment='Catalog history retained')
+student_progress = lambda: req(student, 'progress.php?course_id=111')
+assert {int(row['detail_id']) for row in student_progress()['detailsByCategory'][str(category)]} == {
+    individually_archived, archived_by_category,
+}
+change('task', 'archive', category_id=category, detail_id=individually_archived, expected_name='Renamed task')
+assert [int(row['detail_id']) for row in student_progress()['detailsByCategory'][str(category)]] == [archived_by_category]
+req(manager, policy_route + f'?course_id=111&detail_id={individually_archived}', 404)
+change('category', 'archive', category_id=category, expected_name='Catalog QA renamed')
+assert all(int(row['category_id']) != category for row in student_progress()['categories'])
+assert all(int(row['category_id']) != category for row in
+           req(ta, 'ta/student_progress.php?course_id=111&user_id=101')['categories'])
+for archived in (individually_archived, archived_by_category):
+    req(ta, progress_route, 409, {'user_id': 101, 'detail_id': archived, 'status': 'review'})
+detail = req(manager, 'manager/progress.php?course_id=111&user_id=101')
+assert detail['userStatuses'][str(individually_archived)] == 'Completed'
+assert any(row['signoff_comment'] == 'Catalog history retained' for row in detail['signoffHistory'])
+
 req(manager, 'manager/unenroll.php', body={'user_id': 109, 'course_id': 111})
 route = 'manager/progress_export.php?course_id='
 req(student, route + '111', 403)
@@ -98,6 +137,10 @@ req(manager, route + '112', 403)
 data = req(manager, route + '111')
 book = load_workbook(io.BytesIO(data), read_only=True)
 assert len(book.sheetnames) == 14
+assert any(row[3] == str(individually_archived) and row[4] == 'Renamed task' and row[5] and row[6]
+           for row in book['Tasks'].values)
+assert any(row[2] == str(individually_archived) and row[3] == 'Completed'
+           for row in book['Task progress'].values)
 enrollment = {row[3]: row for row in list(book['Enrollments'].values)[1:]}
 assert len(enrollment) == len(list(book['Enrollments'].values)) - 1
 assert {uid: enrollment[uid][5] for uid in ['101', '107', '108', '109']} == {
@@ -115,4 +158,4 @@ assert history[-1][10] == 'Custom pass' and history[-1][11] == 'Synthetic retain
 assert history[-1][13:] == (str(custom['task_revision']), '2')
 with ZipFile(io.BytesIO(data)) as archive:
     assert all(b'private fixture value' not in archive.read(name) for name in archive.namelist())
-print('Task requirements and historical workbook passed for four roles.')
+print('Task catalog, task requirements and historical workbook passed for four roles.')

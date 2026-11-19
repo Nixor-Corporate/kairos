@@ -250,7 +250,43 @@
           </div>
           <section class="k-card">
             <div class="k-card__body">
-              <details id="managerSignoffSettings" class="signoff-settings">
+              <details class="signoff-settings" name="signoff-management">
+                <summary>Manage sign-off tasks</summary>
+                <p>Archived items are removed from active progress. Existing sign-offs and progress records are kept.</p>
+                <p id="managerCatalogStatus" role="status" aria-live="polite"></p>
+                <fieldset id="managerCatalogFields" disabled>
+                  <legend>Sign-off catalog</legend>
+                  <form id="managerCategoryForm" class="k-panel-gap">
+                    <div class="field">
+                      <label for="managerCatalogCategory">Category</label>
+                      <select class="input" id="managerCatalogCategory"></select>
+                    </div>
+                    <div class="field">
+                      <label for="managerCategoryName">Category name</label>
+                      <input class="input" id="managerCategoryName" maxlength="255" required>
+                    </div>
+                    <div class="k-toolbar">
+                      <button class="btn btn-primary" type="submit">Add category</button>
+                      <button class="btn btn-danger hidden" type="button" id="managerArchiveCategory">Archive category</button>
+                    </div>
+                  </form>
+                  <form id="managerCatalogTaskForm" class="k-panel-gap" hidden>
+                    <div class="field">
+                      <label for="managerCatalogTask">Task in this category</label>
+                      <select class="input" id="managerCatalogTask"></select>
+                    </div>
+                    <div class="field">
+                      <label for="managerCatalogTaskName">Task name</label>
+                      <input class="input" id="managerCatalogTaskName" maxlength="255" required>
+                    </div>
+                    <div class="k-toolbar">
+                      <button class="btn btn-primary" type="submit">Add task</button>
+                      <button class="btn btn-danger hidden" type="button" id="managerArchiveTask">Archive task</button>
+                    </div>
+                  </form>
+                </fieldset>
+              </details>
+              <details id="managerSignoffSettings" class="signoff-settings k-panel-gap" name="signoff-management">
                 <summary>Sign-off requirements</summary>
                 <form id="managerSignoffForm" class="k-panel-gap">
                   <p>Set the course defaults for completing progress tasks.</p>

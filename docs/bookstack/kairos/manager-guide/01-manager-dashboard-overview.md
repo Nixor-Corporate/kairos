@@ -14,6 +14,13 @@ Use the Manager area to manage assigned courses, rooms, enrollment, progress, le
 
 **Enrollment** lists students enrolled in that course. Removing a student here removes their student enrollment for the selected course. Manage staff assignments separately.
 
+## Manage sign-off tasks
+
+1. In **Student progress**, expand **Manage sign-off tasks**.
+2. Choose **New category**, enter a name, and select **Add category**. To rename a category, select it, edit its name, and select **Rename category**.
+3. Select a category, choose **New task**, enter the task name, and select **Add task**. To rename a task, select it and use **Rename task**.
+4. Select **Archive task** or **Archive category** and confirm to remove the item from active progress. Archiving a category also removes its tasks from active progress. Existing records stay in manager progress details and Excel.
+
 ## Set sign-off requirements
 
 1. In **Student progress**, expand **Sign-off requirements**.
@@ -25,7 +32,7 @@ Use the Manager area to manage assigned courses, rooms, enrollment, progress, le
 
 Select **View** next to an enrolled student to see their recent sign-offs. A saved rating keeps the label it had when the TA recorded it.
 
-**Task overrides** configures existing progress tasks. The Manager dashboard has no controls for creating, renaming, or deleting sign-off tasks or categories.
+Use **Task overrides** to change rating and comment requirements for an active task.
 
 ## Download student progress
 
@@ -36,6 +43,8 @@ Select **Download Excel workbook** in **Student progress**. The workbook covers 
 ![Manager dashboard with managed course cards](../screenshots/manager-dashboard.png)
 
 ![Student progress with sign-off requirements and Excel download](../screenshots/manager-progress.png)
+
+![Manage sign-off categories and tasks](../screenshots/manager-signoff-catalog.png)
 
 ## Notes
 

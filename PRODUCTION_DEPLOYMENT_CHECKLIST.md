@@ -36,6 +36,8 @@ Deploy the complete repository change set, including:
 
 Apply all SQL migrations before deploying the related API/UI.
 
+- [ ] Apply `db/migrations/20261119_2100_manage_signoff_catalog.sql` for manager task and category controls. Check create, rename, archive, cross-course denial, archived sign-off history and export on a disposable course. Keep the audit table and archive markers on rollback. A prior build displays archived definitions in active lists.
+
 ## Database Migration
 
 - [ ] Confirm `lms_announcements` and `lms_event_outbox` are present.

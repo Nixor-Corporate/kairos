@@ -185,6 +185,14 @@ function signoff_update_progress(
         if (!$courseLock->fetchColumn() || !$studentLock->fetchColumn()) {
             throw new SignoffConflict('This student or course is no longer available.');
         }
+        $task = $pdo->prepare(
+            'SELECT 1 FROM progress_details d JOIN progress_category c USING (category_id)
+             WHERE c.course_id = ? AND d.detail_id = ? AND c.archived_at IS NULL AND d.archived_at IS NULL'
+        );
+        $task->execute([$courseId, $detailId]);
+        if (!$task->fetchColumn()) {
+            throw new SignoffConflict('This task is no longer active. Reload the student and try again.');
+        }
         $stmt = $pdo->prepare(
             "SELECT COALESCE(LOWER(s.name), 'none') FROM progress p
              JOIN progress_status s ON s.progress_status_id = p.status_id WHERE p.user_id = ? AND p.detail_id = ?"
