@@ -15,11 +15,15 @@ Use the TA Dashboard to select an assigned course and room, view the student que
 7. If a sign-off dialog opens, check the student and task. Choose a rating if required, add the required comment, and select **Complete task**.
 8. Use the separate **Comments** area when you want to leave a general note for other TAs.
 
+For a shared display, select **Projector View** after choosing a room. Select **Light mode** on the projector page to switch the display. Kairos remembers the projector choice in that browser.
+
 ## Screenshot
 
 ![TA Dashboard with course room and student queue](../screenshots/ta-dashboard.png)
 
 ![Task completion with a required rating and comment](../screenshots/ta-signoff.png)
+
+![Projector View with Light mode enabled](../screenshots/projector-light.png)
 
 ## Notes
 

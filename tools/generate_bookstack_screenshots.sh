@@ -26,6 +26,7 @@ views=(
   student-feedback
   ta-dashboard
   ta-signoff
+  projector-light
   grading-workspace
   manager-dashboard
   manager-progress

@@ -5,6 +5,27 @@
   --projector-text: #e8efff;
   --projector-accent: #4ecdc4;
   --projector-muted: #8fa2d2;
+  --projector-row: #1e2539;
+  --projector-serving: #194443;
+  --projector-backdrop: rgba(9, 13, 26, 0.9);
+  --projector-callout: #132040;
+  --projector-shadow: rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --projector-bg: #f1f5fb;
+  --projector-panel: #ffffff;
+  --projector-border: #a9b6ca;
+  --projector-text: #101d32;
+  --projector-accent: #00645e;
+  --projector-muted: #3d506b;
+  --projector-row: #f0f4fa;
+  --projector-serving: #dbf4ef;
+  --projector-backdrop: rgba(230, 238, 249, 0.94);
+  --projector-callout: #ffffff;
+  --projector-shadow: rgba(16, 29, 50, 0.12);
+  color-scheme: light;
 }
 
 body.projector {
@@ -20,6 +41,35 @@ body.projector {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.projector-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.projector-theme-toggle {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--projector-border);
+  border-radius: 10px;
+  background: var(--projector-panel);
+  color: var(--projector-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.projector-theme-toggle[aria-pressed="true"],
+.projector-theme-toggle:hover {
+  border-color: var(--projector-accent);
+}
+
+.projector-theme-toggle:focus-visible {
+  outline: 2px solid var(--projector-accent);
+  outline-offset: 3px;
 }
 
 .projector-title {
@@ -35,7 +85,7 @@ body.projector {
 
 .projector-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 18px;
 }
 
@@ -44,7 +94,7 @@ body.projector {
   border: 1px solid var(--projector-border);
   border-radius: 14px;
   padding: 18px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 10px 30px var(--projector-shadow);
   min-height: 180px;
 }
 
@@ -72,8 +122,8 @@ body.projector {
 .projector-student {
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--projector-row);
+  border: 1px solid var(--projector-border);
   font-size: 18px;
   display: flex;
   justify-content: space-between;
@@ -81,9 +131,8 @@ body.projector {
 }
 
 .projector-student.serving {
-  background: rgba(78, 205, 196, 0.14);
-  border-color: rgba(78, 205, 196, 0.5);
-  color: #f9feff;
+  background: var(--projector-serving);
+  border-color: var(--projector-accent);
 }
 
 .projector-student .status {
@@ -100,7 +149,7 @@ body.projector {
 .projector-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(9, 13, 26, 0.9);
+  background: var(--projector-backdrop);
   display: none;
   align-items: center;
   justify-content: center;
@@ -113,13 +162,13 @@ body.projector {
 
 .projector-overlay .overlay-card {
   text-align: center;
-  color: #fff;
+  color: var(--projector-text);
   max-width: 900px;
   padding: 40px;
   border-radius: 18px;
-  background: linear-gradient(135deg, #132040, #0a1227);
-  border: 2px solid rgba(78, 205, 196, 0.6);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  background: var(--projector-callout);
+  border: 2px solid var(--projector-accent);
+  box-shadow: 0 20px 60px var(--projector-shadow);
 }
 
 .projector-overlay h1 {
@@ -137,7 +186,7 @@ body.projector {
   font-size: 30px;
   margin: 16px 0 10px;
   font-weight: 700;
-  color: #eaf6ff;
+  color: var(--projector-text);
 }
 
 .projector-overlay .subtitle {

@@ -545,7 +545,24 @@
       },
     };
 
-    (views[view] || views.dashboard)();
+    if (view === 'projector-light') {
+      const style = document.createElement('link');
+      style.rel = 'stylesheet';
+      style.href = '../../public/css/projector.css';
+      document.head.appendChild(style);
+      document.body.className = 'projector';
+      document.body.innerHTML = `
+        <header class="projector-header">
+          <div><div class="projector-meta">Computer Science 101</div><h1 class="projector-title">Lab 2</h1><div class="projector-meta">Live room queues</div></div>
+          <div class="projector-actions"><button class="projector-theme-toggle" aria-pressed="true">Light mode</button><img class="k-brand-badge" src="../../public/images/logo-full.png" alt="Kairos" height="42"></div>
+        </header>
+        <main class="projector-grid">
+          <article class="projector-card"><h2>Sign-offs</h2><ul class="projector-students"><li class="projector-student serving">Example Student <span class="status">Serving</span></li><li class="projector-student">Example Learner <span class="status">Waiting</span></li></ul></article>
+          <article class="projector-card"><h2>Help</h2><p class="queue-description">Questions about this week's lab</p><ul class="projector-students"><li class="projector-student">Example Classmate <span class="status">Waiting</span></li></ul></article>
+        </main>`;
+    } else {
+      (views[view] || views.dashboard)();
+    }
   </script>
 </body>
 </html>

@@ -310,5 +310,14 @@ async function bootstrapProjector() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  const toggle = document.getElementById('projectorTheme');
+  const root = document.documentElement;
+  const syncTheme = () => toggle.setAttribute('aria-pressed', String(root.dataset.theme === 'light'));
+  syncTheme();
+  toggle.addEventListener('click', () => {
+    root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';
+    try { localStorage.setItem('kairos-projector-theme', root.dataset.theme); } catch (_) {}
+    syncTheme();
+  });
   bootstrapProjector();
 });
